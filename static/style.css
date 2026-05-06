@@ -205,6 +205,21 @@ main {
     font-weight: bold;
 }
 
+.election-type-tag {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    font-weight: bold;
+    margin-top: 0.5rem;
+    display: block;
+    font-style: italic;
+}
+
+.election-type-tag::before {
+    content: "• ";
+    color: #bdc3c7;
+}
+
 .view-on-map:hover {
     text-decoration: underline;
 }
@@ -212,4 +227,79 @@ main {
 .loading {
     text-align: center;
     padding: 2rem;
+}
+
+.section-title {
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 0.5rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-size: 1.4rem;
+}
+
+.calendar-section {
+    margin-bottom: 2.5rem;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.calendar-card {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.calendar-card.primary {
+    border-left: 5px solid #3498db;
+}
+
+.calendar-card.general {
+    border-left: 5px solid #2ecc71;
+}
+
+.calendar-card h4 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+
+.calendar-card p {
+    margin: 0.3rem 0;
+    font-size: 0.85rem;
+    color: #34495e;
+}
+
+.poll-info {
+    background-color: #fff;
+    padding: 0.5rem 0;
+}
+
+.poll-info p {
+    margin: 0.5rem 0;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.official-link {
+    display: inline-block;
+    margin-top: 1rem;
+    background-color: #3498db;
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.official-link:hover {
+    background-color: #2980b9;
 }

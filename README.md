@@ -1,45 +1,80 @@
-# ElectorMap & Downballot Finder
+# ElectorMap & Downballot Finder (Maryland 2026 Edition)
 
-MVP for identifying legislative districts and candidates using address geocoding and TIGER/Line Shapefiles.
+Este projeto é um MVP para identificação de distritos legislativos, cargos em disputa e calendário eleitoral utilizando geocodificação de endereços e Shapefiles TIGER/Line do Censo dos EUA. Esta versão está configurada especificamente para o ciclo eleitoral de **Maryland 2026**.
 
-## Features
-- **Geocoding**: Converts full addresses or ZIP+4 into coordinates using the Census Geocoder API.
-- **Point-in-Polygon Logic**: Uses GeoPandas to identify districts from TIGER/Line shapefiles.
-- **Interactive Map**: Visualizes the user's location and district boundaries using Leaflet.js.
-- **Downballot Data**: Lists candidates for Congress, State Legislature, School Boards, and local measures.
+## Funcionalidades
+- **Geocodificação**: Converte endereços completos ou ZIP+4 em coordenadas usando a API ArcGIS REST.
+- **Lógica Espacial (Point-in-Polygon)**: Utiliza GeoPandas para identificar distritos a partir de shapefiles oficiais.
+- **Mapa Interativo**: Visualiza a localização do usuário e os limites dos distritos usando Leaflet.js.
+- **Calendário Eleitoral**: Exibe datas de Primárias, Votação Antecipada e horários das urnas para Maryland 2026.
+- **Cargos na Urna**: Lista automaticamente os cargos em disputa (Governador, Congresso, Senado Estadual, Conselho Escolar, etc.) com base na localização.
 
-## Setup & Running
+## Requisitos Prévios
+- Python 3.9 ou superior.
+- [Opcional] Docker e Docker Compose.
 
-1. **Install Dependencies**:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
+## Guia de Instalação e Execução
 
-2. **Download Data** (Minnesota focus for MVP):
-   ```bash
-   python download_data.py
-   ```
+### Passo 1: Clonar o Repositório
+```bash
+git clone <url-do-repositorio>
+cd us-district-zipcode
+```
 
-3. **Run Server**:
-   ```bash
-   python main.py
-   ```
+### Passo 2: Configurar o Ambiente Virtual
+É altamente recomendado o uso de um ambiente virtual para gerenciar as dependências:
 
-### Running with Docker (Recommended for Build)
-Se você deseja realizar um "build" completo e rodar em um ambiente isolado:
+**macOS/Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-1. **Build e Run**:
+**Windows:**
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+```
+
+### Passo 3: Instalar Dependências
+```bash
+pip install -r requirements.txt
+```
+
+### Passo 4: Baixar Dados Geográficos (Maryland)
+O sistema precisa dos shapefiles do Censo para funcionar. O script abaixo baixará os dados necessários de Maryland (FIPS 24) para a pasta `data/`:
+```bash
+python3 download_data.py
+```
+
+### Passo 5: Iniciar o Servidor
+```bash
+python3 main.py
+```
+O servidor estará disponível em: `http://localhost:8000`
+
+---
+
+## Executando com Docker (Alternativa)
+Se você prefere usar Docker para evitar configurar o Python localmente:
+
+1. **Build e Execução**:
    ```bash
    docker-compose up --build
    ```
 
 2. **Acesse**: `http://localhost:8000`
+   *(O Docker já está configurado para baixar os dados necessários durante o build ou inicialização)*.
 
-4. **Access UI**:
-   Open `http://localhost:8000` in your browser.
+---
 
-## Validation
-Test address: `3001 Broadway St NE, Minneapolis, MN 55413`
-(Note: `3256 Epiphenomenal Ave` is a placeholder address and may not be found by the official Census Geocoder).
+## Validação de Teste
+Para verificar se tudo está funcionando corretamente em Maryland, tente pesquisar este endereço:
+- **Endereço**: `100 State Cir, Annapolis, MD 21401`
+- **Resultado Esperado**: O mapa deve focar em Annapolis, mostrar o calendário da Primária de Junho de 2026 e listar cargos como "Governor", "State Senator" e "County Executive".
+
+## Estrutura do Projeto
+- `main.py`: Servidor FastAPI com lógica de busca espacial.
+- `download_data.py`: Script para baixar shapefiles do Censo dos EUA.
+- `static/`: Frontend (HTML/JS/CSS) utilizando Leaflet.js.
+- `requirements.txt`: Lista de bibliotecas Python necessárias.

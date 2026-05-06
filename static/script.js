@@ -1,6 +1,8 @@
 let map;
 let marker;
 let districtLayers = [];
+let layerControl;
+let overlays = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
@@ -73,6 +75,9 @@ function initMap() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
+
+    // Initialize Layer Control
+    layerControl = L.control.layers(null, null, { collapsed: false }).addTo(map);
 }
 
 const DISTRICT_COLORS = {
@@ -92,6 +97,8 @@ function getDistrictColor(type) {
 async function handleSearch() {
     const address = document.getElementById('address-input').value;
     if (!address) return;
+
+    closeAllLists();
 
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
@@ -121,7 +128,7 @@ function updateUI(data) {
     // Update Map
     if (marker) map.removeLayer(marker);
     marker = L.marker([lat, lon]).addTo(map)
-        .bindPopup("Sua Localização")
+        .bindPopup("Your Location")
         .openPopup();
     
     map.setView([lat, lon], 12);
@@ -139,11 +146,11 @@ function updateUI(data) {
 
     if (!jurisdictions || jurisdictions.length === 0) {
         const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<p class="placeholder">Endereço encontrado, mas nenhuma jurisdição legislativa corresponde a esta localização específica.</p>';
+        resultsDiv.innerHTML = '<p class="placeholder">Address found, but no legislative jurisdictions match this specific location.</p>';
         return;
     }
 
-    // Organizar por níveis e agrupar camadas por tipo
+    // Organize by levels and group layers by type
     const levels = { 'Federal': [], 'State': [], 'Local': [] };
     const typeGroups = {};
 
@@ -169,17 +176,17 @@ function updateUI(data) {
                     fillOpacity: 0.1
                 }
             });
-            layer.bindPopup(`<strong>${jur.name}</strong><br>Tipo: ${jur.type}`);
+            layer.bindPopup(`<strong>${jur.name}</strong><br>Type: ${jur.type}`);
             
             if (!typeGroups[jur.type]) {
                 typeGroups[jur.type] = L.layerGroup().addTo(map);
                 const typeLabels = {
-                    'CD': 'Congresso (CD)',
-                    'SLDU': 'Senado Estadual (SLDU)',
-                    'SLDL': 'Câmara Estadual (SLDL)',
-                    'COUNTY': 'Condado (County)',
-                    'PLACE': 'Município (Place)',
-                    'SCHOOL': 'Distrito Escolar (School)'
+                    'CD': 'Congressional (CD)',
+                    'SLDU': 'State Senate (SLDU)',
+                    'SLDL': 'State House (SLDL)',
+                    'COUNTY': 'County',
+                    'PLACE': 'City/Place',
+                    'SCHOOL': 'School District'
                 };
                 layerControl.addOverlay(typeGroups[jur.type], typeLabels[jur.type] || jur.type);
                 overlays[jur.type] = typeGroups[jur.type];
@@ -193,9 +200,41 @@ function updateUI(data) {
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '';
     
+    // Check if we have Maryland data (calendar)
+    const mdData = jurisdictions.find(j => j.primary_election_date);
+    if (mdData) {
+        const calendarSection = document.createElement('div');
+        calendarSection.className = 'calendar-section';
+        calendarSection.innerHTML = `
+            <h3 class="section-title">Voter Calendar</h3>
+            <div class="calendar-grid">
+                <div class="calendar-card primary">
+                    <h4>Primary Election</h4>
+                    <p><strong>Election Day:</strong> ${mdData.primary_election_date}</p>
+                    <p><strong>Early Voting:</strong> ${mdData.primary_early_voting_period}</p>
+                </div>
+                <div class="calendar-card general">
+                    <h4>General Election</h4>
+                    <p><strong>Election Day:</strong> ${mdData.general_election_date}</p>
+                    <p><strong>Early Voting:</strong> ${mdData.general_early_voting_period}</p>
+                </div>
+            </div>
+            <div class="poll-info">
+                <p><strong>Poll Hours:</strong> ${mdData.poll_hours}</p>
+                <a href="${mdData.official_polling_link}" target="_blank" class="official-link">Find My Polling Place (MD Official)</a>
+            </div>
+        `;
+        resultsDiv.appendChild(calendarSection);
+    }
+
+    const ballotTitle = document.createElement('h3');
+    ballotTitle.className = 'section-title';
+    ballotTitle.innerText = 'Offices on Your Ballot';
+    resultsDiv.appendChild(ballotTitle);
+
     const intro = document.createElement('p');
     intro.className = 'ballot-intro';
-    intro.innerHTML = `Para o seu endereço, você votará nos seguintes cargos e medidas no ciclo de <strong>2026</strong>:`;
+    intro.innerHTML = `For your address, you will vote for the following offices and measures in the <strong>2026</strong> cycle:`;
     resultsDiv.appendChild(intro);
 
     ['Federal', 'State', 'Local'].forEach(level => {
@@ -218,10 +257,11 @@ function updateUI(data) {
                             <span class="jur-tag" style="background-color: ${color}">${item.jurType}</span>
                         </div>
                         <div class="measure-impact">
-                            <p><strong>Voto SIM:</strong> ${item.impact_yes}</p>
-                            <p><strong>Voto NÃO:</strong> ${item.impact_no}</p>
+                            <p><strong>YES Vote:</strong> ${item.impact_yes}</p>
+                            <p><strong>NO Vote:</strong> ${item.impact_no}</p>
                         </div>
-                        <span class="view-on-map" onclick="focusJurisdiction('${item.jurId}', '${item.jurType}')">Focar nesta jurisdição</span>
+                        <div class="election-type-tag">${item.election_type}</div>
+                        <span class="view-on-map" onclick="focusJurisdiction('${item.jurId}', '${item.jurType}')">Focus on Map</span>
                     `;
                 } else {
                     const isLegislative = ['CD', 'SLDL', 'SLDU'].includes(item.jurType);
@@ -234,7 +274,8 @@ function updateUI(data) {
                         </div>
                         <p class="jur-name">${displayName}</p>
                         <p class="office-desc">${item.description || ''}</p>
-                        <span class="view-on-map" onclick="focusJurisdiction('${item.jurId}', '${item.jurType}')">Focar nesta jurisdição</span>
+                        <div class="election-type-tag">${item.election_type}</div>
+                        <span class="view-on-map" onclick="focusJurisdiction('${item.jurId}', '${item.jurType}')">Focus on Map</span>
                     `;
                 }
                 resultsDiv.appendChild(card);

@@ -70,12 +70,14 @@ class Office(BaseModel):
     name: str
     level: str # Federal, State, Local
     description: Optional[str] = None
+    election_type: Optional[str] = "general election"
 
 class BallotMeasure(BaseModel):
     title: str
     level: str
     impact_yes: str
     impact_no: str
+    election_type: Optional[str] = "general election"
 
 class Jurisdiction(BaseModel):
     id: str
@@ -84,27 +86,66 @@ class Jurisdiction(BaseModel):
     offices: List[Office]
     measures: List[BallotMeasure] = []
     geometry: Optional[dict] = None
+    # Primary Election
+    primary_election_date: Optional[str] = None
+    primary_early_voting_period: Optional[str] = None
+    # General Election
+    general_election_date: Optional[str] = None
+    general_early_voting_period: Optional[str] = None
+    poll_hours: Optional[str] = None
+    official_polling_link: Optional[str] = None
 
 class SearchResult(BaseModel):
     lat: float
     lon: float
     jurisdictions: List[Jurisdiction]
 
-def get_offices_for_jurisdiction(dist_type: str) -> List[Office]:
+def get_maryland_2026_offices(dist_type: str) -> List[Office]:
     mapping = {
-        "CD": [Office(name="U.S. Representative", level="Federal", description="Representante no Congresso dos EUA")],
-        "SLDU": [Office(name="State Senator", level="State", description="Senador Estadual")],
-        "SLDL": [Office(name="State Representative", level="State", description="Representante Estadual")],
+        "CD": [Office(name="U.S. House of Representatives", level="Federal", description="U.S. House Representative", election_type="general election")],
+        "SLDU": [Office(name="State Senator", level="State", description="Maryland State Senator", election_type="general election")],
+        "SLDL": [Office(name="House of Delegates", level="State", description="Maryland House Delegate", election_type="general election")],
         "COUNTY": [
-            Office(name="Sheriff", level="Local", description="Xerife do Condado"),
-            Office(name="County Commissioner", level="Local", description="Comissário do Condado"),
-            Office(name="District Attorney", level="Local", description="Promotor de Justiça")
+            Office(name="County Executive", level="Local", description="County Executive", election_type="general election"),
+            Office(name="County Council", level="Local", description="County Council Member", election_type="general election"),
+            Office(name="Sheriff", level="Local", description="County Sheriff", election_type="general election"),
+            Office(name="State's Attorney", level="Local", description="State's Attorney", election_type="general election"),
+            Office(name="Circuit Court Judge", level="Local", description="Circuit Court Judge", election_type="general election")
+        ],
+        "SCHOOL": [Office(name="Board of Education Member", level="Local", description="Board of Education Member", election_type="general election")]
+    }
+    
+    offices = mapping.get(dist_type, [])
+    
+    if dist_type == "SLDU":
+        statewide = [
+            Office(name="Governor", level="State", description="Governor of Maryland", election_type="general election"),
+            Office(name="Lieutenant Governor", level="State", description="Lieutenant Governor of Maryland", election_type="general election"),
+            Office(name="Comptroller", level="State", description="State Comptroller", election_type="general election"),
+            Office(name="Attorney General", level="State", description="State Attorney General", election_type="general election")
+        ]
+        offices.extend(statewide)
+        
+    return offices
+
+def get_offices_for_jurisdiction(dist_type: str, state_fp: str = None) -> List[Office]:
+    if state_fp == "24": # Maryland
+        return get_maryland_2026_offices(dist_type)
+        
+    mapping = {
+        "CD": [Office(name="U.S. Representative", level="Federal", description="U.S. House Representative", election_type="general election")],
+        "SLDU": [Office(name="State Senator", level="State", description="State Senator", election_type="general election")],
+        "SLDL": [Office(name="State Representative", level="State", description="State Representative", election_type="general election")],
+        "COUNTY": [
+            Office(name="Sheriff", level="Local", description="County Sheriff", election_type="general election"),
+            Office(name="County Commissioner", level="Local", description="County Commissioner", election_type="general election"),
+            Office(name="District Attorney", level="Local", description="District Attorney", election_type="general election")
         ],
         "PLACE": [
-            Office(name="Mayor", level="Local", description="Prefeito Municipal"),
-            Office(name="City Council", level="Local", description="Vereador/Conselho Municipal")
+            Office(name="Mayor", level="Local", description="City Mayor", election_type="general election"),
+            Office(name="City Council", level="Local", description="City Council Member", election_type="general election")
         ],
-        "SCHOOL": [Office(name="School Board Member", level="Local", description="Membro do Conselho Escolar")]
+        "SCHOOL": [Office(name="School Board Member", level="Local", description="School Board Member", election_type="general election")]
     }
     return mapping.get(dist_type, [])
 
@@ -112,17 +153,19 @@ def get_measures_for_jurisdiction(dist_type: str, name: str) -> List[BallotMeasu
     measures = []
     if dist_type == "PLACE":
         measures.append(BallotMeasure(
-            title=f"Referendo Municipal - {name}",
+            title=f"Local Referendum - {name}",
             level="Local",
-            impact_yes="Aprova o financiamento para novos parques.",
-            impact_no="Mantém o orçamento atual."
+            impact_yes="Approves funding for new parks.",
+            impact_no="Maintains current budget.",
+            election_type="general election"
         ))
     elif dist_type == "SLDU":
         measures.append(BallotMeasure(
-            title="Emenda Constitucional Estadual 1",
+            title="State Constitutional Amendment 1",
             level="State",
-            impact_yes="Protege direitos ambientais na constituição.",
-            impact_no="Nenhuma mudança na constituição."
+            impact_yes="Protects environmental rights in the constitution.",
+            impact_no="No change to the constitution.",
+            election_type="primary election"
         ))
     return measures
 
@@ -149,7 +192,7 @@ async def search_address(data: AddressSearch):
     
     if not candidates:
         print("No candidates found in API response")
-        raise HTTPException(status_code=404, detail="Endereço não encontrado.")
+        raise HTTPException(status_code=404, detail="Address not found.")
     
     match = candidates[0]
     lat = match["location"]["y"]
@@ -192,20 +235,32 @@ async def search_address(data: AddressSearch):
                 dist_id = "Unknown"
 
             name = row.get('NAMELSAD', row.get('NAME', 'Unknown Jurisdiction'))
+            state_fp = row.get('STATEFP')
 
             # Convert geometry to GeoJSON for frontend
             geo_json = json.loads(gpd.GeoSeries([row.geometry]).to_json())['features'][0]['geometry']
 
-            jurisdictions.append(Jurisdiction(
+            jurisdiction = Jurisdiction(
                 id=dist_id,
                 name=name,
                 type=key,
-                offices=get_offices_for_jurisdiction(key),
+                offices=get_offices_for_jurisdiction(key, state_fp),
                 measures=get_measures_for_jurisdiction(key, name),
                 geometry=geo_json
-            ))
+            )
 
-    return SearchResult(lat=lat, lon=lon, jurisdictions=jurisdictions)
+            # Enrich with Maryland data if applicable
+            if state_fp == "24":
+                jurisdiction.primary_election_date = "June 23, 2026"
+                jurisdiction.primary_early_voting_period = "June 11 - June 18, 2026"
+                jurisdiction.general_election_date = "November 3, 2026"
+                jurisdiction.general_early_voting_period = "October 22 - October 29, 2026"
+                jurisdiction.poll_hours = "07:00 AM to 08:00 PM"
+                jurisdiction.official_polling_link = "https://elections.maryland.gov/voting/where.html"
+
+            districts.append(jurisdiction)
+
+    return SearchResult(lat=lat, lon=lon, jurisdictions=districts)
 
 @app.get("/")
 async def read_index():

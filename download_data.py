@@ -6,8 +6,8 @@ DATA_DIR = "data"
 YEAR = "2024"
 
 # URLs para Shapefiles Nacionais (US-wide)
-# Lista de FIPS de estados dos EUA (excluindo territórios para simplificar o MVP)
-STATE_FIPS = ["27"] # Apenas Minnesota para economizar espaço e demonstrar as camadas
+# Lista de FIPS de estados dos EUA
+STATE_FIPS = ["24"] # Maryland FIPS
 
 def download_and_extract(name, url, extract_to):
     print(f"Downloading {name} from {url}...")
@@ -41,13 +41,21 @@ if __name__ == "__main__":
     county_url = "https://www2.census.gov/geo/tiger/TIGER2024/COUNTY/tl_2024_us_county.zip"
     download_and_extract("COUNTY_US", county_url, os.path.join(DATA_DIR, "COUNTY"))
     
-    # Para o MVP, baixamos apenas um estado (MN) para evitar falta de espaço
-    fips = "27" 
+    # Maryland FIPS
+    fips = "24" 
     
-    # CD119
+    # CD119 (Congresso)
     cd_url = f"https://www2.census.gov/geo/tiger/TIGER2024/CD/tl_2024_{fips}_cd119.zip"
     download_and_extract(f"CD_{fips}", cd_url, os.path.join(DATA_DIR, "CD"))
     
+    # SLDU (Senado Estadual)
+    sldu_url = f"https://www2.census.gov/geo/tiger/TIGER2024/SLDU/tl_2024_{fips}_sldu.zip"
+    download_and_extract(f"SLDU_{fips}", sldu_url, os.path.join(DATA_DIR, "SLDU"))
+
+    # SLDL (Câmara Estadual)
+    sldl_url = f"https://www2.census.gov/geo/tiger/TIGER2024/SLDL/tl_2024_{fips}_sldl.zip"
+    download_and_extract(f"SLDL_{fips}", sldl_url, os.path.join(DATA_DIR, "SLDL"))
+
     # Places (Municípios)
     place_url = f"https://www2.census.gov/geo/tiger/TIGER2024/PLACE/tl_2024_{fips}_place.zip"
     download_and_extract(f"PLACE_{fips}", place_url, os.path.join(DATA_DIR, "PLACE"))
