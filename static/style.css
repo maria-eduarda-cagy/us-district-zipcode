@@ -1,0 +1,209 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    height: 100%;
+    background-color: #f4f7f6;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+header {
+    background-color: #2c3e50;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.search-container {
+    display: flex;
+    gap: 0.5rem;
+    position: relative;
+}
+
+.input-group {
+    position: relative;
+    width: 400px;
+}
+
+#address-input {
+    padding: 0.5rem;
+    width: 100%;
+    border-radius: 4px;
+    border: none;
+    box-sizing: border-box;
+}
+
+.autocomplete-items {
+    position: absolute;
+    border: 1px solid #d4d4d4;
+    border-bottom: none;
+    border-top: none;
+    z-index: 99;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: #fff;
+    color: #333;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.autocomplete-items div {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #d4d4d4;
+}
+
+.autocomplete-items div:hover {
+    background-color: #e9e9e9;
+}
+
+.autocomplete-active {
+    background-color: #3498db !important;
+    color: #ffffff;
+}
+
+#search-btn {
+    padding: 0.5rem 1rem;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#search-btn:hover {
+    background-color: #2980b9;
+}
+
+main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+#map {
+    flex: 2;
+}
+
+#info-panel {
+    flex: 1;
+    background-color: white;
+    padding: 1.5rem;
+    overflow-y: auto;
+    border-left: 1px solid #ddd;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+.district-card {
+    background-color: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.district-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #3498db;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.district-card h3 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1.2rem;
+}
+
+.district-type-tag {
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.candidate-list {
+    list-style: none;
+    padding: 0;
+}
+
+.candidate-item {
+    padding: 1rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.candidate-bio, .candidate-survey, .candidate-context {
+    font-size: 0.85rem;
+    color: #555;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #f9f9f9;
+    border-radius: 4px;
+    border-left: 2px solid #ddd;
+}
+
+.candidate-context {
+    border-left-color: #e74c3c;
+    background: #fdf2f2;
+}
+
+.view-on-map {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #3498db;
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.view-on-map:hover {
+    text-decoration: underline;
+}
+
+.candidate-item:last-child {
+    border-bottom: none;
+}
+
+.candidate-name {
+    font-weight: bold;
+    color: #333;
+}
+
+.candidate-party {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.placeholder {
+    color: #999;
+    font-style: italic;
+    text-align: center;
+    margin-top: 2rem;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+}

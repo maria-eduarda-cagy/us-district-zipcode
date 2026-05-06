@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElectorMap & Downballot Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>ElectorMap & Downballot Finder</h1>
+            <div class="search-container">
+                <div class="input-group">
+                    <input type="text" id="address-input" placeholder="Enter Full Address or ZIP+4" value="3001 Broadway St NE, Minneapolis, MN 55413" autocomplete="off">
+                    <div id="autocomplete-list" class="autocomplete-items"></div>
+                </div>
+                <button id="search-btn">Search</button>
+            </div>
+        </header>
+
+        <main>
+            <div id="map"></div>
+            <div id="info-panel">
+                <h2>District Information</h2>
+                <div id="results">
+                    <p class="placeholder">Search for an address to see districts and candidates.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>
