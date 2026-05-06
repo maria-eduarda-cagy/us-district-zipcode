@@ -66,103 +66,65 @@ async def startup_event():
 class AddressSearch(BaseModel):
     address: str
 
-class Candidate(BaseModel):
+class Office(BaseModel):
     name: str
-    office: str
-    party: str
-    bio: Optional[str] = "Biografia não disponível no momento."
-    survey: Optional[str] = "Este candidato ainda não respondeu à pesquisa de eleitores."
-    context: Optional[str] = None # Para medidas de votação (Sim/Não impacto)
+    level: str # Federal, State, Local
+    description: Optional[str] = None
 
-class DistrictInfo(BaseModel):
+class BallotMeasure(BaseModel):
+    title: str
+    level: str
+    impact_yes: str
+    impact_no: str
+
+class Jurisdiction(BaseModel):
     id: str
     name: str
     type: str # CD, SLDL, SLDU, COUNTY, PLACE, SCHOOL
-    candidates: List[Candidate]
+    offices: List[Office]
+    measures: List[BallotMeasure] = []
     geometry: Optional[dict] = None
 
 class SearchResult(BaseModel):
     lat: float
     lon: float
-    districts: List[DistrictInfo]
+    jurisdictions: List[Jurisdiction]
 
-# Mock candidate database (In real life, connect to Ballotpedia or similar)
-CANDIDATE_DB = {
-    "2705": [ # MN Congressional District 5
-        Candidate(name="Ilhan Omar", office="U.S. Representative", party="Democratic"),
-        Candidate(name="Dalia Al-Aqidi", office="U.S. Representative", party="Republican")
-    ],
-    "27061A": [ # MN State House 61A
-        Candidate(name="Katie Jones", office="State Representative", party="Democratic")
-    ],
-    "27061": [ # MN State Senate 61
-        Candidate(name="Scott Dibble", office="State Senator", party="Democratic")
-    ],
-    "SCHOOL_BOARD_MN_MPS": [
-        Candidate(name="Kim Ellison", office="School Board Member", party="Non-partisan"),
-        Candidate(name="Adriana Cerrillo", office="School Board Member", party="Non-partisan")
-    ],
-    "LOCAL_MEASURES_MN": [
-        Candidate(name="Referendum 1", office="School Funding Measure", party="N/A"),
-        Candidate(name="Amendment 1", office="Constitutional Amendment", party="N/A")
-    ]
-}
+def get_offices_for_jurisdiction(dist_type: str) -> List[Office]:
+    mapping = {
+        "CD": [Office(name="U.S. Representative", level="Federal", description="Representante no Congresso dos EUA")],
+        "SLDU": [Office(name="State Senator", level="State", description="Senador Estadual")],
+        "SLDL": [Office(name="State Representative", level="State", description="Representante Estadual")],
+        "COUNTY": [
+            Office(name="Sheriff", level="Local", description="Xerife do Condado"),
+            Office(name="County Commissioner", level="Local", description="Comissário do Condado"),
+            Office(name="District Attorney", level="Local", description="Promotor de Justiça")
+        ],
+        "PLACE": [
+            Office(name="Mayor", level="Local", description="Prefeito Municipal"),
+            Office(name="City Council", level="Local", description="Vereador/Conselho Municipal")
+        ],
+        "SCHOOL": [Office(name="School Board Member", level="Local", description="Membro do Conselho Escolar")]
+    }
+    return mapping.get(dist_type, [])
 
-def get_candidates(district_id: str, dist_type: str) -> List[Candidate]:
-    candidates = []
-    
-    # Simulação de candidatos com contexto enriquecido
-    if dist_type == "CD":
-        candidates.append(Candidate(
-            name="Candidato Federal", 
-            office="U.S. Representative", 
-            party="Independente",
-            bio="Veterano com 20 anos de serviço público focado em transparência governamental.",
-            survey="Prioriza a reforma do financiamento de campanha e infraestrutura nacional."
+def get_measures_for_jurisdiction(dist_type: str, name: str) -> List[BallotMeasure]:
+    measures = []
+    if dist_type == "PLACE":
+        measures.append(BallotMeasure(
+            title=f"Referendo Municipal - {name}",
+            level="Local",
+            impact_yes="Aprova o financiamento para novos parques.",
+            impact_no="Mantém o orçamento atual."
         ))
-    elif dist_type == "COUNTY":
-        candidates.append(Candidate(
-            name="Xerife Local", 
-            office="County Sheriff", 
-            party="Não-partidário",
-            bio="Delegado de carreira com mestrado em Segurança Pública.",
-            survey="Propõe patrulhamento comunitário e modernização tecnológica da frota."
+    elif dist_type == "SLDU":
+        measures.append(BallotMeasure(
+            title="Emenda Constitucional Estadual 1",
+            level="State",
+            impact_yes="Protege direitos ambientais na constituição.",
+            impact_no="Nenhuma mudança na constituição."
         ))
-    elif dist_type == "SCHOOL":
-        candidates.append(Candidate(
-            name="Conselheiro Escolar", 
-            office="School Board Member", 
-            party="Não-partidário",
-            bio="Professor aposentado e pai de três alunos da rede pública.",
-            survey="Foco na expansão de programas de artes e saúde mental nas escolas."
-        ))
-    elif dist_type == "PLACE":
-        candidates.append(Candidate(
-            name="Prefeito Municipal", 
-            office="Mayor", 
-            party="Democrata",
-            bio="Ex-vereador focado em desenvolvimento urbano sustentável.",
-            survey="Planeja aumentar ciclovias e investir em habitação acessível."
-        ))
-        candidates.append(Candidate(
-            name="Referendo sobre Parques",
-            office="Medida de Votação (Local)",
-            party="N/A",
-            context="Um voto 'Sim' aprova o aumento de 0.5% no imposto sobre vendas para financiar parques. Um voto 'Não' mantém a taxa atual e o orçamento atual dos parques."
-        ))
-    elif dist_type == "JUDICIAL":
-        candidates.append(Candidate(
-            name="Juiz Distrital",
-            office="District Judge",
-            party="Não-partidário",
-            bio="Juiz com 15 anos de experiência em varas de família e criminais.",
-            survey="Foco na redução da reincidência através de programas de reabilitação."
-        ))
-
-    if not candidates:
-        candidates.append(Candidate(name="Candidato Genérico", office="Cargo Local", party="Independente"))
-        
-    return candidates
+    return measures
 
 @app.post("/api/search", response_model=SearchResult)
 async def search_address(data: AddressSearch):
@@ -234,15 +196,16 @@ async def search_address(data: AddressSearch):
             # Convert geometry to GeoJSON for frontend
             geo_json = json.loads(gpd.GeoSeries([row.geometry]).to_json())['features'][0]['geometry']
 
-            districts.append(DistrictInfo(
+            jurisdictions.append(Jurisdiction(
                 id=dist_id,
                 name=name,
                 type=key,
-                candidates=get_candidates(dist_id, key),
+                offices=get_offices_for_jurisdiction(key),
+                measures=get_measures_for_jurisdiction(key, name),
                 geometry=geo_json
             ))
 
-    return SearchResult(lat=lat, lon=lon, districts=districts)
+    return SearchResult(lat=lat, lon=lon, jurisdictions=jurisdictions)
 
 @app.get("/")
 async def read_index():
