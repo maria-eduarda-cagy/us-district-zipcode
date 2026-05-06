@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+env/
+.env
+
+# Data (Shapefiles are too large for Git)
+data/
+*.zip
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
