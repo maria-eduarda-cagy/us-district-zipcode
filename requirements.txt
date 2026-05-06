@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+geopandas
+shapely
+requests
+pandas
+pyogrio
+fiona
