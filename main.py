@@ -82,7 +82,8 @@ def load_layers():
         "SCHOOL": os.path.join(DATA_DIR, "UNSD"),
         "MD_ELECTION_2022_CD": os.path.join(DATA_DIR, "MD", "congressional_2022.geojson"),
         "MD_DELEGATE_SUBDISTRICTS_2022": os.path.join(DATA_DIR, "MD", "delegate_subdistricts_2022.geojson"),
-        "MD_PRECINCTS_2026": os.path.join(DATA_DIR, "MD", "precincts_2026.geojson"),
+        "MD_PRECINCTS_2022": os.path.join(DATA_DIR, "MD", "precincts_2022.geojson"),
+        "MD_PRECINCTS_2026": os.path.join(DATA_DIR, "MD", "precincts_2022.geojson"),
         "DC_WARDS_2022": os.path.join(DATA_DIR, "DC", "wards_2022.geojson"),
         "DC_ANC_2023": os.path.join(DATA_DIR, "DC", "anc_2023.geojson"),
         "DC_SMD_2023": os.path.join(DATA_DIR, "DC", "smd_2023.geojson"),
@@ -186,6 +187,7 @@ class AddressCanonical(BaseModel):
     lat: float
     lon: float
     source: str
+    source_used: Optional[str] = None
     matched_address: Optional[str] = None
     census_block_geoid: Optional[str] = None
     match_score: Optional[float] = None
@@ -562,6 +564,7 @@ def _geocode_arcgis(address: str, geocode_url: str, source: str) -> Optional[Add
             lat=lat,
             lon=lon,
             source=source,
+            source_used=source,
             matched_address=match.get("address")
             ,
             match_score=float(score) if score is not None else None,
@@ -585,6 +588,37 @@ def _geocode_census_geographies(address: str) -> Optional[Dict[str, Any]]:
         return r.json()
     except Exception:
         return None
+
+def _geocode_census_geographies_by_coords(lat: float, lon: float) -> Optional[Dict[str, Any]]:
+    try:
+        url = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        params = {
+            "x": str(lon),
+            "y": str(lat),
+            "benchmark": BENCHMARK,
+            "vintage": "Current_Current",
+            "format": "json"
+        }
+        r = requests.get(url, params=params, timeout=20)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+def _attach_census_block_geoid(address_canonical: AddressCanonical) -> None:
+    if address_canonical.census_block_geoid is not None:
+        return
+    census = _geocode_census_geographies_by_coords(address_canonical.lat, address_canonical.lon)
+    if not census:
+        return
+    try:
+        geos = census.get("result", {}).get("geographies", {})
+        blocks = geos.get("Census Blocks") or geos.get("2020 Census Blocks")
+        if blocks and len(blocks) > 0:
+            address_canonical.census_block_geoid = blocks[0].get("GEOID")
+    except Exception:
+        return
 
 def geocode_hierarchical(address: str) -> AddressCanonical:
     world = _geocode_arcgis(
@@ -634,6 +668,7 @@ def geocode_hierarchical(address: str) -> AddressCanonical:
                             lat=float(lat),
                             lon=float(lon),
                             source="Census",
+                            source_used="Census",
                             precision_class="interpolated",
                             matched_address=m0.get("matchedAddress")
                         )
@@ -661,6 +696,8 @@ def geocode_hierarchical(address: str) -> AddressCanonical:
             c.match_score if c.match_score is not None else 0
         )
     chosen = sorted(candidates, key=_rank, reverse=True)[0]
+    if chosen.source_used is None:
+        chosen.source_used = chosen.source
     census = _geocode_census_geographies(address)
     if census:
         try:
@@ -672,6 +709,7 @@ def geocode_hierarchical(address: str) -> AddressCanonical:
                     chosen.census_block_geoid = blocks[0].get("GEOID")
         except Exception:
             pass
+    _attach_census_block_geoid(chosen)
     return chosen
 
 def _get_tiger_year_from_metadata() -> Optional[str]:
@@ -702,7 +740,9 @@ def _sample_ballot_source_url(layer_id: str, tiger_year: Optional[str]) -> Optio
         "MD_ELECTION_2022_CD": "https://mdgeodata.md.gov/imap/rest/services/Boundaries/MD_ElectionBoundaries/MapServer/0",
         "MD_SENATE_DISTRICTS_2022": "https://mdgeodata.md.gov/imap/rest/services/Boundaries/MD_ElectionBoundaries/MapServer/1",
         "DC_WARDS_2022": "https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer/53",
+        "DC_ANC_2023": "https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer/54",
         "DC_SMD_2023": "https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer/55",
+        "DC_SBOE_DISTRICTS": "https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Education_WebMercator/MapServer/9",
         "VA_FAIRFAX_SUPERVISOR_DISTRICTS": "https://www.fairfaxcounty.gov/idrisi/rest/services/Jade/Electoral/MapServer/2",
         "VA_LOUDOUN_ELECTION_DISTRICTS_2022": "https://logis.loudoun.gov/gis/rest/services/COL/ElectionDistricts/MapServer/8",
         "CD": None,
@@ -826,6 +866,14 @@ async def search_address(data: AddressSearch):
     point = Point(address_canonical.lon, address_canonical.lat)
 
     jurisdiction_code = address_canonical.state_abbr if address_canonical.state_abbr in ("MD", "DC", "VA") else None
+    _attach_census_block_geoid(address_canonical)
+    census_geo = _geocode_census_geographies_by_coords(address_canonical.lat, address_canonical.lon) or {}
+    census_geos = census_geo.get("result", {}).get("geographies", {}) if isinstance(census_geo, dict) else {}
+    expected_geoids = {
+        "CD": ((census_geos.get("119th Congressional Districts") or [{}])[0].get("GEOID") if isinstance(census_geos.get("119th Congressional Districts"), list) else None),
+        "SLDU": ((census_geos.get("2024 State Legislative Districts - Upper") or [{}])[0].get("GEOID") if isinstance(census_geos.get("2024 State Legislative Districts - Upper"), list) else None),
+        "SLDL": ((census_geos.get("2024 State Legislative Districts - Lower") or [{}])[0].get("GEOID") if isinstance(census_geos.get("2024 State Legislative Districts - Lower"), list) else None),
+    }
 
     layer_meta: Dict[str, DistrictLayer] = {
         "MD_ELECTION_2022_CD": DistrictLayer(
@@ -855,12 +903,12 @@ async def search_address(data: AddressSearch):
             legal_basis="Maryland SJR 2 (2022)",
             source_url="https://mdgeodata.md.gov/imap/rest/services/Boundaries/MD_ElectionBoundaries/MapServer/1"
         ),
-        "MD_PRECINCTS_2026": DistrictLayer(
-            layer_id="MD_PRECINCTS_2026",
+        "MD_PRECINCTS_2022": DistrictLayer(
+            layer_id="MD_PRECINCTS_2022",
             layer_type="PRECINCT",
-            name="Maryland Precincts 2026",
+            name="Maryland Precincts 2022",
             jurisdiction="MD",
-            effective_from="2026-01-01",
+            effective_from="2022-01-01",
             source_url="https://mdgeodata.md.gov/imap/rest/services/Boundaries/MD_ElectionBoundaries/MapServer/2"
         ),
         "DC_WARDS_2022": DistrictLayer(
@@ -930,7 +978,7 @@ async def search_address(data: AddressSearch):
         "MD_ELECTION_2022_CD",
         "MD_SENATE_DISTRICTS_2022",
         "MD_DELEGATE_SUBDISTRICTS_2022",
-        "MD_PRECINCTS_2026",
+        "MD_PRECINCTS_2022",
         "DC_WARDS_2022",
         "DC_ANC_2023",
         "DC_SMD_2023",
@@ -971,9 +1019,36 @@ async def search_address(data: AddressSearch):
         if containing.empty:
             continue
 
-        ambiguous_multi = len(containing) > 1
+        prepared = []
         for _, row in containing.iterrows():
             props = {k: v for k, v in dict(row).items() if k != "geometry"}
+            boundary_m = _meters_to_boundary(point, row.geometry)
+
+            candidate_geoid = None
+            if key == "CD":
+                cd_col = "CD119FP" if "CD119FP" in props else ("CD118FP" if "CD118FP" in props else None)
+                if props.get("STATEFP") is not None and cd_col is not None and props.get(cd_col) is not None:
+                    candidate_geoid = f"{props.get('STATEFP')}{props.get(cd_col)}"
+            elif key == "SLDU":
+                if props.get("STATEFP") is not None and props.get("SLDUST") is not None:
+                    candidate_geoid = f"{props.get('STATEFP')}{props.get('SLDUST')}"
+            elif key == "SLDL":
+                if props.get("STATEFP") is not None and props.get("SLDLST") is not None:
+                    candidate_geoid = f"{props.get('STATEFP')}{props.get('SLDLST')}"
+
+            prepared.append((candidate_geoid, boundary_m, row, props))
+
+        ambiguous_multi = len(prepared) > 1
+        if ambiguous_multi:
+            expected = expected_geoids.get(key)
+            def _dist_key(d):
+                return d if d is not None else -1.0
+            if expected is not None:
+                prepared.sort(key=lambda t: (t[0] == expected, _dist_key(t[1])), reverse=True)
+            else:
+                prepared.sort(key=lambda t: _dist_key(t[1]), reverse=True)
+
+        for _, boundary_m, row, props in prepared:
             feature_id = None
             feature_name = None
 
@@ -997,7 +1072,7 @@ async def search_address(data: AddressSearch):
             elif key == "MD_DELEGATE_SUBDISTRICTS_2022":
                 feature_id = props.get("DISTRICT")
                 feature_name = f"Delegate Subdistrict {props.get('DISTRICT')}" if props.get("DISTRICT") is not None else None
-            elif key == "MD_PRECINCTS_2026":
+            elif key in ("MD_PRECINCTS_2022", "MD_PRECINCTS_2026"):
                 feature_id = props.get("VTD") or props.get("PRECINCT") or props.get("OBJECTID")
                 feature_name = props.get("NAME") or props.get("PRECINCT") or props.get("VTD")
             elif key == "VA_FAIRFAX_SUPERVISOR_DISTRICTS":
@@ -1022,13 +1097,12 @@ async def search_address(data: AddressSearch):
             feature_id = str(feature_id) if feature_id is not None else "unknown"
             feature_name = str(feature_name) if feature_name is not None else None
 
-            boundary_m = _meters_to_boundary(point, row.geometry)
             ambiguous_distance = boundary_m is not None and boundary_m < 15
 
             geo_json = json.loads(gpd.GeoSeries([row.geometry]).to_json())["features"][0]["geometry"]
             logger.info("Resolved membership layer=%s feature_id=%s distance_m=%s ambiguous=%s", key, feature_id, boundary_m, bool(ambiguous_multi or ambiguous_distance))
             membership_properties = {k: str(v) for k, v in props.items() if v is not None}
-            if ambiguous_multi and key in ("MD_PRECINCTS_2026", "VA_LOUDOUN_PRECINCTS"):
+            if ambiguous_multi and key in ("MD_PRECINCTS_2022", "MD_PRECINCTS_2026", "VA_LOUDOUN_PRECINCTS"):
                 if address_canonical.census_block_geoid is not None:
                     membership_properties["census_block_geoid"] = str(address_canonical.census_block_geoid)
                 membership_properties["split_precinct_possible"] = "true"
@@ -1059,50 +1133,72 @@ async def search_address(data: AddressSearch):
                 )
             )
 
-            if key in ("CD", "SLDU", "SLDL", "COUNTY", "PLACE", "SCHOOL"):
+            if key in (
+                "CD",
+                "SLDU",
+                "SLDL",
+                "COUNTY",
+                "PLACE",
+                "SCHOOL",
+                "DC_WARDS_2022",
+                "DC_ANC_2023",
+                "DC_SMD_2023",
+                "DC_SBOE_DISTRICTS",
+                "VA_FAIRFAX_SUPERVISOR_DISTRICTS",
+                "VA_LOUDOUN_ELECTION_DISTRICTS_2022",
+            ):
                 state_fp = props.get("STATEFP")
-                dist_id = "Unknown"
-                if key == "CD":
-                    cd_col = "CD119FP" if "CD119FP" in props else ("CD118FP" if "CD118FP" in props else "DISTRICT")
-                    dist_id = f"{props.get('STATEFP', '')}{props.get(cd_col, '??')}"
-                elif key == "SLDL":
-                    dist_id = f"{props.get('STATEFP', '')}{props.get('SLDLST', '')}"
-                elif key == "SLDU":
-                    dist_id = f"{props.get('STATEFP', '')}{props.get('SLDUST', '')}"
-                elif key == "COUNTY":
-                    dist_id = f"{props.get('STATEFP', '')}{props.get('COUNTYFP', '')}"
-                elif key == "PLACE":
-                    dist_id = f"{props.get('STATEFP', '')}{props.get('PLACEFP', '')}"
-                elif key == "SCHOOL":
-                    dist_id = f"{props.get('STATEFP', '')}{props.get('UNSDLEA', '')}"
+                dist_id = f"{key}:{feature_id}"
+                offices = []
+                measures = []
+
+                if key in ("CD", "SLDU", "SLDL", "COUNTY", "PLACE", "SCHOOL"):
+                    dist_id = "Unknown"
+                    if key == "CD":
+                        cd_col = "CD119FP" if "CD119FP" in props else ("CD118FP" if "CD118FP" in props else "DISTRICT")
+                        dist_id = f"{props.get('STATEFP', '')}{props.get(cd_col, '??')}"
+                    elif key == "SLDL":
+                        dist_id = f"{props.get('STATEFP', '')}{props.get('SLDLST', '')}"
+                    elif key == "SLDU":
+                        dist_id = f"{props.get('STATEFP', '')}{props.get('SLDUST', '')}"
+                    elif key == "COUNTY":
+                        dist_id = f"{props.get('STATEFP', '')}{props.get('COUNTYFP', '')}"
+                    elif key == "PLACE":
+                        dist_id = f"{props.get('STATEFP', '')}{props.get('PLACEFP', '')}"
+                    elif key == "SCHOOL":
+                        dist_id = f"{props.get('STATEFP', '')}{props.get('UNSDLEA', '')}"
+
+                    offices = get_offices_for_jurisdiction(key, str(state_fp) if state_fp is not None else None)
+                    measures = get_measures_for_jurisdiction(key, str(feature_name) if feature_name is not None else "")
 
                 jurisdictions.append(
                     Jurisdiction(
                         id=str(dist_id),
                         name=str(feature_name) if feature_name is not None else "Unknown Jurisdiction",
                         type=key,
-                        offices=get_offices_for_jurisdiction(key, str(state_fp) if state_fp is not None else None),
-                        measures=get_measures_for_jurisdiction(key, str(feature_name) if feature_name is not None else ""),
+                        offices=offices,
+                        measures=measures,
                         geometry=geo_json
                     )
                 )
-                if str(state_fp) == "24":
-                    jurisdictions[-1].primary_election_date = "June 23, 2026"
-                    jurisdictions[-1].primary_early_voting_period = "June 11 - June 18, 2026"
-                    jurisdictions[-1].general_election_date = "November 3, 2026"
-                    jurisdictions[-1].general_early_voting_period = "October 22 - October 29, 2026"
-                    jurisdictions[-1].poll_hours = "07:00 AM to 08:00 PM"
-                    jurisdictions[-1].official_polling_link = "https://elections.maryland.gov/voting/where.html"
-                elif str(state_fp) == "11":
-                    jurisdictions[-1].primary_election_date = "June 16, 2026"
-                    jurisdictions[-1].general_election_date = "November 3, 2026"
-                    jurisdictions[-1].poll_hours = "07:00 AM to 08:00 PM"
-                    jurisdictions[-1].official_polling_link = "https://dcboe.org/voters/where-vote"
-                elif str(state_fp) == "51":
-                    jurisdictions[-1].primary_election_date = "August 4, 2026"
-                    jurisdictions[-1].general_election_date = "November 3, 2026"
-                    jurisdictions[-1].poll_hours = "06:00 AM to 07:00 PM"
-                    jurisdictions[-1].official_polling_link = "https://www.elections.virginia.gov/casting-a-ballot/polling-place-lookup/"
+                if key in ("CD", "SLDU", "SLDL", "COUNTY", "PLACE", "SCHOOL"):
+                    if str(state_fp) == "24":
+                        jurisdictions[-1].primary_election_date = "June 23, 2026"
+                        jurisdictions[-1].primary_early_voting_period = "June 11 - June 18, 2026"
+                        jurisdictions[-1].general_election_date = "November 3, 2026"
+                        jurisdictions[-1].general_early_voting_period = "October 22 - October 29, 2026"
+                        jurisdictions[-1].poll_hours = "07:00 AM to 08:00 PM"
+                        jurisdictions[-1].official_polling_link = "https://elections.maryland.gov/voting/where.html"
+                    elif str(state_fp) == "11":
+                        jurisdictions[-1].primary_election_date = "June 16, 2026"
+                        jurisdictions[-1].general_election_date = "November 3, 2026"
+                        jurisdictions[-1].poll_hours = "07:00 AM to 08:00 PM"
+                        jurisdictions[-1].official_polling_link = "https://dcboe.org/voters/where-vote"
+                    elif str(state_fp) == "51":
+                        jurisdictions[-1].primary_election_date = "August 4, 2026"
+                        jurisdictions[-1].general_election_date = "November 3, 2026"
+                        jurisdictions[-1].poll_hours = "06:00 AM to 07:00 PM"
+                        jurisdictions[-1].official_polling_link = "https://www.elections.virginia.gov/casting-a-ballot/polling-place-lookup/"
 
     memberships_by_layer = {}
     for m in district_memberships:
@@ -1272,14 +1368,6 @@ async def sample_ballot(data: AddressSearch, include_downballot: bool = False):
 
     tiger_year = _get_tiger_year_from_metadata()
 
-    district_rules = {
-        "CD": {"office_name": "U.S. Representative", "jurisdiction_level": "Federal", "scope": "district"},
-        "SLDU": {"office_name": "State Senator", "jurisdiction_level": "State", "scope": "district"},
-        "WARD": {"office_name": "Ward Member of the Council", "jurisdiction_level": "Local", "scope": "district"},
-        "SMD": {"office_name": "ANC Commissioner", "jurisdiction_level": "Local", "scope": "district"},
-        "SUPERVISOR_DISTRICT": {"office_name": "Board of Supervisors Member", "jurisdiction_level": "Local", "scope": "district"},
-    }
-
     contests: List[SampleBallotContest] = []
     preferred_by_type: Dict[str, List[str]] = {}
     if jurisdiction_code == "MD":
@@ -1309,27 +1397,6 @@ async def sample_ballot(data: AddressSearch, include_downballot: bool = False):
             "PLACE": ["PLACE"],
         }
 
-    extra_rules = {}
-    if include_downballot and jurisdiction_code == "MD":
-        extra_rules["DELEGATE_SUBDISTRICT"] = {"office_name": "House of Delegates", "jurisdiction_level": "State", "scope": "district"}
-        extra_rules["COUNTY"] = [
-            {"office_name": "County Executive", "jurisdiction_level": "Local", "scope": "district"},
-            {"office_name": "County Council", "jurisdiction_level": "Local", "scope": "district"},
-            {"office_name": "Sheriff", "jurisdiction_level": "Local", "scope": "district"},
-            {"office_name": "State's Attorney", "jurisdiction_level": "Local", "scope": "district"},
-            {"office_name": "Circuit Court Judge", "jurisdiction_level": "Local", "scope": "district"},
-        ]
-        extra_rules["SCHOOL"] = {"office_name": "Board of Education Member", "jurisdiction_level": "Local", "scope": "district"}
-    if include_downballot and jurisdiction_code == "VA":
-        extra_rules["SLDL"] = {"office_name": "State Delegate", "jurisdiction_level": "State", "scope": "district"}
-        extra_rules["COUNTY"] = [
-            {"office_name": "Sheriff", "jurisdiction_level": "Local", "scope": "district"},
-            {"office_name": "Commonwealth's Attorney", "jurisdiction_level": "Local", "scope": "district"},
-        ]
-        extra_rules["SCHOOL"] = {"office_name": "School Board Member", "jurisdiction_level": "Local", "scope": "district"}
-    if include_downballot and jurisdiction_code == "DC":
-        extra_rules["SBOE_DISTRICT"] = {"office_name": "State Board of Education Member", "jurisdiction_level": "Local", "scope": "district"}
-
     def pick_membership(layer_ids: List[str]) -> Optional[DistrictMembership]:
         for lid in layer_ids:
             members = memberships_by_layer.get(lid) or []
@@ -1337,71 +1404,100 @@ async def sample_ballot(data: AddressSearch, include_downballot: bool = False):
                 return members[0]
         return None
 
-    for layer_type, layer_ids in preferred_by_type.items():
-        base = district_rules.get(layer_type)
-        extra = extra_rules.get(layer_type)
-        if base is None and extra is None:
+    rules: List[OfficeRule] = []
+    election_year = 2026
+    if jurisdiction_code == "MD":
+        rules.extend([
+            OfficeRule(name="U.S. Representative", level="Federal", scope="district", election_type="general election", jurisdiction="US", district_layer_type="CD"),
+            OfficeRule(name="State Senator", level="State", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="SLDU"),
+            OfficeRule(name="Governor", level="State", scope="at_large", election_type="general election", jurisdiction="MD"),
+            OfficeRule(name="Lt. Governor", level="State", scope="at_large", election_type="general election", jurisdiction="MD"),
+            OfficeRule(name="Attorney General", level="State", scope="at_large", election_type="general election", jurisdiction="MD"),
+            OfficeRule(name="Comptroller", level="State", scope="at_large", election_type="general election", jurisdiction="MD"),
+        ])
+        if include_downballot:
+            rules.extend([
+                OfficeRule(name="House of Delegates", level="State", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="DELEGATE_SUBDISTRICT"),
+                OfficeRule(name="County Executive", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="COUNTY"),
+                OfficeRule(name="County Council", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="COUNTY"),
+                OfficeRule(name="Sheriff", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="COUNTY"),
+                OfficeRule(name="State's Attorney", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="COUNTY"),
+                OfficeRule(name="Circuit Court Judge", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="COUNTY"),
+                OfficeRule(name="Board of Education Member", level="Local", scope="district", election_type="general election", jurisdiction="MD", district_layer_type="SCHOOL"),
+            ])
+    elif jurisdiction_code == "DC":
+        rules.extend([
+            OfficeRule(name="Mayor", level="Local", scope="at_large", election_type="general election", jurisdiction="DC", ranked_choice_voting=(election_year >= 2026)),
+            OfficeRule(name="Chairman of the Council", level="Local", scope="at_large", election_type="general election", jurisdiction="DC", ranked_choice_voting=(election_year >= 2026)),
+            OfficeRule(name="At-large Member of the Council", level="Local", scope="at_large", election_type="general election", jurisdiction="DC", ranked_choice_voting=(election_year >= 2026)),
+            OfficeRule(name="Attorney General", level="Local", scope="at_large", election_type="general election", jurisdiction="DC", ranked_choice_voting=(election_year >= 2026)),
+            OfficeRule(name="Councilmember (Ward)", level="Local", scope="district", election_type="general election", jurisdiction="DC", district_layer_type="WARD", ranked_choice_voting=(election_year >= 2026)),
+            OfficeRule(name="ANC Commissioner", level="Local", scope="district", election_type="general election", jurisdiction="DC", district_layer_type="SMD", ranked_choice_voting=False),
+            OfficeRule(name="Delegate to the US House", level="Federal", scope="at_large", election_type="general election", jurisdiction="DC"),
+        ])
+        if include_downballot:
+            rules.append(
+                OfficeRule(name="State Board of Education Member", level="Local", scope="district", election_type="general election", jurisdiction="DC", district_layer_type="SBOE_DISTRICT")
+            )
+    elif jurisdiction_code == "VA":
+        rules.extend([
+            OfficeRule(name="U.S. Representative", level="Federal", scope="district", election_type="general election", jurisdiction="US", district_layer_type="CD"),
+            OfficeRule(name="State Senator", level="State", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="SLDU"),
+            OfficeRule(name="Board of Supervisors Member", level="Local", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="SUPERVISOR_DISTRICT"),
+        ])
+        if include_downballot:
+            rules.extend([
+                OfficeRule(name="State Delegate", level="State", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="SLDL"),
+                OfficeRule(name="Sheriff", level="Local", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="COUNTY"),
+                OfficeRule(name="Commonwealth's Attorney", level="Local", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="COUNTY"),
+                OfficeRule(name="School Board Member", level="Local", scope="district", election_type="general election", jurisdiction="VA", district_layer_type="SCHOOL"),
+            ])
+    else:
+        rules.append(
+            OfficeRule(name="U.S. Representative", level="Federal", scope="district", election_type="general election", jurisdiction="US", district_layer_type="CD")
+        )
+
+    for rule in rules:
+        if rule.jurisdiction not in ("US", jurisdiction_code):
             continue
 
+        if rule.scope == "at_large":
+            contests.append(
+                SampleBallotContest(
+                    office_name=rule.name,
+                    jurisdiction_level=rule.level,
+                    scope="at_large",
+                    ranked_choice_voting=rule.ranked_choice_voting,
+                )
+            )
+            continue
+
+        if rule.district_layer_type is None:
+            continue
+
+        layer_ids = preferred_by_type.get(rule.district_layer_type) or []
         member = pick_membership(layer_ids)
         if member is None:
             continue
 
-        if layer_type == "WARD":
+        if rule.district_layer_type == "WARD":
             ward_no = _extract_ward_number(member.feature_name)
             if ward_no not in (1, 3, 5, 6):
                 continue
 
-        rules_to_emit = []
-        if isinstance(extra, list):
-            rules_to_emit = extra
-        else:
-            rules_to_emit = [r for r in [base, extra] if isinstance(r, dict)]
-
         source_layer_id = member.layer_id
-        for r in rules_to_emit:
-            contests.append(
-                SampleBallotContest(
-                    office_name=r["office_name"],
-                    jurisdiction_level=r["jurisdiction_level"],
-                    scope=r["scope"],
-                    ranked_choice_voting=False,
-                    district_id=_sample_ballot_district_id(source_layer_id, member, jurisdiction_code),
-                    district_name=member.feature_name,
-                    district_layer_type=layer_type,
-                    source_url=_sample_ballot_source_url(source_layer_id, tiger_year),
-                )
+        contests.append(
+            SampleBallotContest(
+                office_name=rule.name,
+                jurisdiction_level=rule.level,
+                scope="district",
+                ranked_choice_voting=rule.ranked_choice_voting,
+                district_id=_sample_ballot_district_id(source_layer_id, member, jurisdiction_code),
+                district_name=member.feature_name,
+                district_layer_type=rule.district_layer_type,
+                source_url=_sample_ballot_source_url(source_layer_id, tiger_year),
             )
-
-    if jurisdiction_code == "MD":
-        for office_name in ["Governor", "Lt. Governor", "Attorney General", "Comptroller"]:
-            contests.append(
-                SampleBallotContest(
-                    office_name=office_name,
-                    jurisdiction_level="State",
-                    scope="at_large",
-                    ranked_choice_voting=False
-                )
-            )
-
-    if jurisdiction_code == "DC":
-        for office_name in [
-            "Mayor",
-            "Chairman of the Council",
-            "At-large Member of the Council",
-            "Attorney General",
-            "US Senator",
-            "US Representative",
-            "Delegate to the US House",
-        ]:
-            contests.append(
-                SampleBallotContest(
-                    office_name=office_name,
-                    jurisdiction_level="Federal" if "US" in office_name or "Delegate" in office_name else "Local",
-                    scope="at_large",
-                    ranked_choice_voting=True
-                )
-            )
+        )
 
     unique = {}
     for c in contests:
