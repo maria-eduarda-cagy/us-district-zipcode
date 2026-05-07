@@ -33,6 +33,19 @@ h1 {
     position: relative;
 }
 
+.search-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #ecf0f1;
+    font-size: 0.9rem;
+    user-select: none;
+}
+
+.search-toggle input {
+    margin: 0;
+}
+
 .input-group {
     position: relative;
     width: 400px;
@@ -302,4 +315,112 @@ main {
 
 .official-link:hover {
     background-color: #2980b9;
+}
+
+.sample-ballot-section {
+    margin-bottom: 2.5rem;
+}
+
+.sample-ballot-note {
+    font-size: 0.9rem;
+    color: #34495e;
+    margin: 0.3rem 0 1rem 0;
+    line-height: 1.4;
+}
+
+.sample-ballot-warning {
+    font-size: 0.9rem;
+    color: #c0392b;
+    margin: 0.3rem 0 1rem 0;
+    font-weight: bold;
+}
+
+.sample-ballot-card {
+    background-color: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.sample-ballot-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+
+.sample-office {
+    font-size: 1.05rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.sample-tags {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sample-tag {
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sample-tag.level {
+    background-color: #ecf0f1;
+    color: #2c3e50;
+}
+
+.sample-tag.scope {
+    background-color: #3498db;
+    color: white;
+}
+
+.sample-district {
+    margin: 0.5rem 0 0.6rem 0;
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.sample-district-id {
+    margin: 0.55rem 0 0 0;
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.sample-audit {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+}
+
+.sample-layer {
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.sample-rcv {
+    font-weight: bold;
+    color: #8e44ad;
+}
+
+.sample-source-link {
+    color: #3498db;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.sample-source-link:hover {
+    text-decoration: underline;
 }

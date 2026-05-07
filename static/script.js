@@ -104,25 +104,58 @@ async function handleSearch() {
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
 
     try {
-        const response = await fetch('/api/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address })
-        });
+        const includeDownballot = Boolean(document.getElementById('include-downballot')?.checked);
+        const sampleBallotUrl = `/api/sample-ballot?include_downballot=${includeDownballot ? 'true' : 'false'}`;
 
+        const [searchResult, sampleResult] = await Promise.allSettled([
+            fetch('/api/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address })
+            }),
+            fetch(sampleBallotUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address })
+            })
+        ]);
+
+        if (searchResult.status !== 'fulfilled') {
+            throw new Error('Failed to find address');
+        }
+
+        const response = searchResult.value;
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to find address');
         }
-
         const data = await response.json();
-        updateUI(data);
+
+        let sampleBallot = null;
+        let sampleBallotError = null;
+        if (sampleResult.status === 'fulfilled') {
+            const sbResp = sampleResult.value;
+            if (sbResp.ok) {
+                sampleBallot = await sbResp.json();
+            } else {
+                try {
+                    const err = await sbResp.json();
+                    sampleBallotError = err.detail || 'Failed to generate sample ballot';
+                } catch {
+                    sampleBallotError = 'Failed to generate sample ballot';
+                }
+            }
+        } else {
+            sampleBallotError = 'Failed to generate sample ballot';
+        }
+
+        updateUI(data, sampleBallot, sampleBallotError);
     } catch (error) {
         resultsDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
     }
 }
 
-function updateUI(data) {
+function updateUI(data, sampleBallot, sampleBallotError) {
     const { lat, lon, jurisdictions } = data;
 
     // Update Map
@@ -226,6 +259,65 @@ function updateUI(data) {
         `;
         resultsDiv.appendChild(calendarSection);
     }
+
+    const sampleSection = document.createElement('div');
+    sampleSection.className = 'sample-ballot-section';
+    sampleSection.innerHTML = `<h3 class="section-title">Sample Ballot (Offices Only)</h3>`;
+
+    if (sampleBallotError) {
+        const warn = document.createElement('p');
+        warn.className = 'sample-ballot-warning';
+        warn.innerText = `Sample ballot unavailable: ${sampleBallotError}`;
+        sampleSection.appendChild(warn);
+    } else if (sampleBallot && Array.isArray(sampleBallot.contests) && sampleBallot.contests.length > 0) {
+        const note = document.createElement('p');
+        note.className = 'sample-ballot-note';
+        note.innerText = 'Generated from authoritative geocoding + district layers. No candidate names included.';
+        sampleSection.appendChild(note);
+
+        sampleBallot.contests.forEach(contest => {
+            const card = document.createElement('div');
+            card.className = 'sample-ballot-card';
+
+            const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
+            const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
+
+            const auditLink = contest.source_url
+                ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
+                : '';
+            const districtLine = contest.district_name
+                ? `<p class="sample-district">${contest.district_name}</p>`
+                : '';
+            const districtIdLine = contest.district_id
+                ? `<p class="sample-district-id">${contest.district_id}</p>`
+                : '';
+
+            card.innerHTML = `
+                <div class="sample-ballot-header">
+                    <span class="sample-office">${contest.office_name}</span>
+                    <div class="sample-tags">
+                        <span class="sample-tag level">${contest.jurisdiction_level}</span>
+                        <span class="sample-tag scope">${scopeLabel}</span>
+                    </div>
+                </div>
+                ${districtIdLine}
+                ${districtLine}
+                <div class="sample-audit">
+                    ${contest.district_layer_type ? `<span class="sample-layer">${contest.district_layer_type}</span>` : ''}
+                    ${rcvLabel ? `<span class="sample-rcv">${rcvLabel}</span>` : ''}
+                    ${auditLink}
+                </div>
+            `;
+            sampleSection.appendChild(card);
+        });
+    } else {
+        const empty = document.createElement('p');
+        empty.className = 'sample-ballot-note';
+        empty.innerText = 'No offices were generated for this address.';
+        sampleSection.appendChild(empty);
+    }
+
+    resultsDiv.appendChild(sampleSection);
 
     const ballotTitle = document.createElement('h3');
     ballotTitle.className = 'section-title';
