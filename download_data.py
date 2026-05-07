@@ -154,8 +154,8 @@ def run_download(tiger_year=None):
         failures.append({"layer": "MD_ELECTION_2022_CD", "url": f"{md_base}/0"})
     if not download_arcgis_layer_geojson(f"{md_base}/1", os.path.join(DATA_DIR, "MD", "delegate_subdistricts_2022.geojson")):
         failures.append({"layer": "MD_DELEGATE_SUBDISTRICTS_2022", "url": f"{md_base}/1"})
-    if not download_arcgis_layer_geojson(f"{md_base}/2", os.path.join(DATA_DIR, "MD", "precincts_2026.geojson")):
-        failures.append({"layer": "MD_PRECINCTS_2026", "url": f"{md_base}/2"})
+    if not download_arcgis_layer_geojson(f"{md_base}/2", os.path.join(DATA_DIR, "MD", "precincts_2022.geojson")):
+        failures.append({"layer": "MD_PRECINCTS_2022", "url": f"{md_base}/2"})
 
     print("Downloading Washington, DC operational boundaries (GeoJSON)...")
     dc_admin = "https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer"
