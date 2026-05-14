@@ -4,6 +4,17 @@ let districtLayers = [];
 let layerControl;
 let overlays = {};
 
+const SUPABASE_FUNCTIONS_BASE = 'https://admgbmqudusymriuirmq.supabase.co/functions/v1';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbWdibXF1ZHVzeW1yaXVpcm1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDY2NjksImV4cCI6MjA5NDIyMjY2OX0.7nixMV4v-wRGzyGVsl1PqrLCKn_OVJgO8_Bab6GbSoM';
+
+function supabaseFunctionHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     document.getElementById('search-btn').addEventListener('click', handleSearch);
@@ -97,21 +108,8 @@ const DISTRICT_COLORS = {
     'default': '#95a5a6'
 };
 
-function hashStringToInt(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) - hash) + str.charCodeAt(i);
-        hash |= 0;
-    }
-    return hash >>> 0;
-}
-
-function getDistrictColor(type, id) {
-    const key = `${type || 'default'}:${id || ''}`;
-    const h = hashStringToInt(key) % 360;
-    const s = 62 + (hashStringToInt(key + ':s') % 18);
-    const l = 42 + (hashStringToInt(key + ':l') % 10);
-    return `hsl(${h}, ${s}%, ${l}%)`;
+function getDistrictColor(type) {
+    return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
 }
 
 async function handleSearch() {
@@ -125,17 +123,18 @@ async function handleSearch() {
 
     try {
         const includeDownballot = Boolean(document.getElementById('include-downballot')?.checked);
-        const sampleBallotUrl = `/api/sample-ballot?include_downballot=${includeDownballot ? 'true' : 'false'}`;
+        const searchUrl = `${SUPABASE_FUNCTIONS_BASE}/search`;
+        const sampleBallotUrl = `${SUPABASE_FUNCTIONS_BASE}/sample-ballot?include_downballot=${includeDownballot ? 'true' : 'false'}`;
 
         const [searchResult, sampleResult] = await Promise.allSettled([
-            fetch('/api/search', {
+            fetch(searchUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: supabaseFunctionHeaders(),
                 body: JSON.stringify({ address })
             }),
             fetch(sampleBallotUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: supabaseFunctionHeaders(),
                 body: JSON.stringify({ address })
             })
         ]);
@@ -146,8 +145,8 @@ async function handleSearch() {
 
         const response = searchResult.value;
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to find address');
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || error.error || 'Failed to find address');
         }
         const data = await response.json();
 
@@ -160,7 +159,7 @@ async function handleSearch() {
             } else {
                 try {
                     const err = await sbResp.json();
-                    sampleBallotError = err.detail || 'Failed to generate sample ballot';
+                    sampleBallotError = err.detail || err.error || 'Failed to generate sample ballot';
                 } catch {
                     sampleBallotError = 'Failed to generate sample ballot';
                 }
@@ -176,7 +175,7 @@ async function handleSearch() {
 }
 
 function updateUI(data, sampleBallot, sampleBallotError) {
-    const { lat, lon, jurisdictions } = data;
+    const { lat, lon, memberships } = data;
 
     // Update Map
     if (marker) map.removeLayer(marker);
@@ -197,30 +196,21 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     }
     overlays = {};
 
-    if (!jurisdictions || jurisdictions.length === 0) {
+    if (!memberships || memberships.length === 0) {
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<p class="placeholder">Address found, but no legislative jurisdictions match this specific location.</p>';
         return;
     }
 
-    // Organize by levels and group layers by type
-    const levels = { 'Federal': [], 'State': [], 'Local': [] };
     const typeGroups = {};
 
-    jurisdictions.forEach(jur => {
-        const color = getDistrictColor(jur.type, jur.id);
-        
-        // Group offices/measures
-        jur.offices.forEach(office => {
-            levels[office.level].push({ ...office, jurName: jur.name, jurId: jur.id, jurType: jur.type });
-        });
-        jur.measures.forEach(measure => {
-            levels[measure.level].push({ isMeasure: true, ...measure, jurName: jur.name, jurId: jur.id, jurType: jur.type });
-        });
+    memberships.forEach(m => {
+        const districtTypeKey = m.layer_type || 'default';
+        const districtTypeLabel = m.layer_type || 'Unknown';
+        const color = getDistrictColor(districtTypeKey);
 
-        // Add to map groups
-        if (jur.geometry) {
-            const layer = L.geoJSON(jur.geometry, {
+        if (m.geometry) {
+            const layer = L.geoJSON(m.geometry, {
                 style: {
                     color: color,
                     weight: 2,
@@ -229,16 +219,20 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                     fillOpacity: 0.1
                 }
             });
-            layer.bindPopup(`<strong>${jur.name}</strong><br>Type: ${jur.type}`);
-            
-            if (!typeGroups[jur.type]) {
-                typeGroups[jur.type] = L.layerGroup().addTo(map);
+
+            const popupName = m.district_name || 'District';
+            const popupId = m.district_id ? `<br>ID: ${m.district_id}` : '';
+            layer.bindPopup(`<strong>${popupName}</strong><br>Type: ${districtTypeLabel}${popupId}`);
+
+            if (!typeGroups[districtTypeKey]) {
+                typeGroups[districtTypeKey] = L.layerGroup().addTo(map);
                 const typeLabels = {
                     'CD': 'Congressional (CD)',
                     'SLDU': 'State Senate (SLDU)',
                     'SLDL': 'State House (SLDL)',
                     'COUNTY': 'County',
                     'PLACE': 'City/Place',
+                    'UNSD': 'School District',
                     'SCHOOL': 'School District',
                     'DC_WARDS_2022': 'DC Wards',
                     'DC_ANC_2023': 'DC ANCs',
@@ -248,145 +242,124 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                     'VA_LOUDOUN_ELECTION_DISTRICTS_2022': 'Loudoun Election Districts',
                     'VA_LOUDOUN_PRECINCTS': 'Loudoun Precincts'
                 };
-                layerControl.addOverlay(typeGroups[jur.type], typeLabels[jur.type] || jur.type);
-                overlays[jur.type] = typeGroups[jur.type];
+                layerControl.addOverlay(typeGroups[districtTypeKey], typeLabels[districtTypeKey] || districtTypeLabel);
+                overlays[districtTypeKey] = typeGroups[districtTypeKey];
             }
-            typeGroups[jur.type].addLayer(layer);
-            districtLayers.push({ id: jur.id, type: jur.type, layer: layer, color });
+            typeGroups[districtTypeKey].addLayer(layer);
+            districtLayers.push({ id: m.district_id, type: districtTypeKey, layer: layer });
         }
     });
 
-    // Render Ballot
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '';
-    
-    const calData = jurisdictions.find(j => j.primary_election_date && j.general_election_date);
-    if (calData) {
-        const calendarSection = document.createElement('div');
-        calendarSection.className = 'calendar-section';
-        calendarSection.innerHTML = `
-            <h3 class="section-title">Voter Calendar</h3>
-            <div class="calendar-grid">
-                <div class="calendar-card primary">
-                    <h4>Primary Election</h4>
-                    <p><strong>Election Day:</strong> ${calData.primary_election_date}</p>
-                    ${calData.primary_early_voting_period ? `<p><strong>Early Voting:</strong> ${calData.primary_early_voting_period}</p>` : ''}
-                </div>
-                <div class="calendar-card general">
-                    <h4>General Election</h4>
-                    <p><strong>Election Day:</strong> ${calData.general_election_date}</p>
-                    ${calData.general_early_voting_period ? `<p><strong>Early Voting:</strong> ${calData.general_early_voting_period}</p>` : ''}
-                </div>
+
+    const districtsTitle = document.createElement('h3');
+    districtsTitle.className = 'section-title';
+    districtsTitle.innerText = 'Districts Found';
+    resultsDiv.appendChild(districtsTitle);
+
+    memberships.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'ballot-card';
+        const color = getDistrictColor(m.layer_type);
+        card.style.borderLeft = `5px solid ${color}`;
+
+        const sourceLink = m.source_url ? `<a href="${m.source_url}" target="_blank" class="sample-source-link">Source</a>` : '';
+        const idLine = m.district_id ? `<p class="jur-name"><strong>${m.district_id}</strong></p>` : '';
+        const nameLine = m.district_name ? `<p class="jur-name">${m.district_name}</p>` : '';
+
+        card.innerHTML = `
+            <div class="ballot-item-header">
+                <span class="item-name">${m.layer_type || 'District'}</span>
+                <span class="jur-tag" style="background-color: ${color}">${m.layer_type || 'Unknown'}</span>
             </div>
-            <div class="poll-info">
-                ${calData.poll_hours ? `<p><strong>Poll Hours:</strong> ${calData.poll_hours}</p>` : ''}
-                ${calData.official_polling_link ? `<a href="${calData.official_polling_link}" target="_blank" class="official-link">Find My Polling Place (Official)</a>` : ''}
+            ${idLine}
+            ${nameLine}
+            <div class="sample-audit">
+                ${sourceLink}
+                ${m.district_id && m.layer_type ? `<span class="view-on-map" onclick="focusJurisdiction('${m.district_id}', '${m.layer_type}')">Focus on Map</span>` : ''}
             </div>
         `;
-        resultsDiv.appendChild(calendarSection);
-    }
+        resultsDiv.appendChild(card);
+    });
 
-    const ballotSection = document.createElement('div');
-    ballotSection.className = 'sample-ballot-section';
-    ballotSection.innerHTML = `<h3 class="section-title">Ballot Summary</h3>`;
-
-    const ballotNote = document.createElement('p');
-    ballotNote.className = 'sample-ballot-note';
-    ballotNote.innerText = 'Offices are generated from geocoding + district layers (no candidates). Measures come from the jurisdiction cards.';
-    ballotSection.appendChild(ballotNote);
-
-    const officesHeader = document.createElement('h3');
-    officesHeader.className = 'level-header';
-    officesHeader.innerText = 'Offices';
-    ballotSection.appendChild(officesHeader);
+    const ballotTitle = document.createElement('h3');
+    ballotTitle.className = 'section-title';
+    ballotTitle.innerText = 'Offices on Your Ballot';
+    resultsDiv.appendChild(ballotTitle);
 
     if (sampleBallotError) {
         const warn = document.createElement('p');
         warn.className = 'sample-ballot-warning';
-        warn.innerText = `Sample ballot unavailable: ${sampleBallotError}`;
-        ballotSection.appendChild(warn);
-    } else if (sampleBallot && Array.isArray(sampleBallot.contests) && sampleBallot.contests.length > 0) {
-        sampleBallot.contests.forEach(contest => {
-            const card = document.createElement('div');
-            card.className = 'sample-ballot-card';
+        warn.innerText = `Ballot unavailable: ${sampleBallotError}`;
+        resultsDiv.appendChild(warn);
+        return;
+    }
 
-            const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
-            const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
+    if (sampleBallot && Array.isArray(sampleBallot.contests) && sampleBallot.contests.length > 0) {
+        const note = document.createElement('p');
+        note.className = 'sample-ballot-note';
+        note.innerText = 'Generated from authoritative geocoding + district layers. No candidate names included.';
+        resultsDiv.appendChild(note);
 
-            const auditLink = contest.source_url
-                ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
-                : '';
-            const districtLine = contest.district_name
-                ? `<p class="sample-district">${contest.district_name}</p>`
-                : '';
-            const districtIdLine = contest.district_id
-                ? `<p class="sample-district-id">${contest.district_id}</p>`
-                : '';
+        const levels = { 'Federal': [], 'State': [], 'Local': [] };
+        sampleBallot.contests.forEach(c => {
+            if (levels[c.jurisdiction_level]) levels[c.jurisdiction_level].push(c);
+        });
 
-            card.innerHTML = `
-                <div class="sample-ballot-header">
-                    <span class="sample-office">${contest.office_name}</span>
-                    <div class="sample-tags">
-                        <span class="sample-tag level">${contest.jurisdiction_level}</span>
-                        <span class="sample-tag scope">${scopeLabel}</span>
+        ['Federal', 'State', 'Local'].forEach(level => {
+            if (levels[level].length === 0) return;
+            const levelHeader = document.createElement('h3');
+            levelHeader.className = 'level-header';
+            levelHeader.innerText = level;
+            resultsDiv.appendChild(levelHeader);
+
+            levels[level].forEach(contest => {
+                const card = document.createElement('div');
+                card.className = 'sample-ballot-card';
+
+                const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
+                const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
+
+                const auditLink = contest.source_url
+                    ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
+                    : '';
+                const districtLine = contest.district_name
+                    ? `<p class="sample-district">${contest.district_name}</p>`
+                    : '';
+                const districtIdLine = contest.district_id
+                    ? `<p class="sample-district-id">${contest.district_id}</p>`
+                    : '';
+                const focusLink = (contest.district_id && contest.district_layer_type)
+                    ? `<span class="view-on-map" onclick="focusJurisdiction('${contest.district_id}', '${contest.district_layer_type}')">Focus on Map</span>`
+                    : '';
+
+                card.innerHTML = `
+                    <div class="sample-ballot-header">
+                        <span class="sample-office">${contest.office_name}</span>
+                        <div class="sample-tags">
+                            <span class="sample-tag level">${contest.jurisdiction_level}</span>
+                            <span class="sample-tag scope">${scopeLabel}</span>
+                        </div>
                     </div>
-                </div>
-                ${districtIdLine}
-                ${districtLine}
-                <div class="sample-audit">
-                    ${contest.district_layer_type ? `<span class="sample-layer">${contest.district_layer_type}</span>` : ''}
-                    ${rcvLabel ? `<span class="sample-rcv">${rcvLabel}</span>` : ''}
-                    ${auditLink}
-                </div>
-            `;
-            ballotSection.appendChild(card);
+                    ${districtIdLine}
+                    ${districtLine}
+                    <div class="sample-audit">
+                        ${contest.district_layer_type ? `<span class="sample-layer">${contest.district_layer_type}</span>` : ''}
+                        ${rcvLabel ? `<span class="sample-rcv">${rcvLabel}</span>` : ''}
+                        ${auditLink}
+                        ${focusLink}
+                    </div>
+                `;
+                resultsDiv.appendChild(card);
+            });
         });
     } else {
         const empty = document.createElement('p');
         empty.className = 'sample-ballot-note';
         empty.innerText = 'No offices were generated for this address.';
-        ballotSection.appendChild(empty);
+        resultsDiv.appendChild(empty);
     }
-
-    const measuresOnly = []
-        .concat(levels['Federal'].filter(x => x.isMeasure))
-        .concat(levels['State'].filter(x => x.isMeasure))
-        .concat(levels['Local'].filter(x => x.isMeasure));
-
-    const measuresHeader = document.createElement('h3');
-    measuresHeader.className = 'level-header';
-    measuresHeader.innerText = 'Measures';
-    ballotSection.appendChild(measuresHeader);
-
-    if (measuresOnly.length === 0) {
-        const none = document.createElement('p');
-        none.className = 'sample-ballot-note';
-        none.innerText = 'No measures were listed for this address.';
-        ballotSection.appendChild(none);
-    } else {
-        measuresOnly.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'ballot-card';
-            const color = getDistrictColor(item.jurType, item.jurId);
-            card.style.borderLeft = `5px solid ${color}`;
-
-            card.innerHTML = `
-                <div class="ballot-item-header">
-                    <span class="item-name">${item.title}</span>
-                    <span class="jur-tag" style="background-color: ${color}">${item.jurType}</span>
-                </div>
-                <div class="measure-impact">
-                    <p><strong>YES Vote:</strong> ${item.impact_yes}</p>
-                    <p><strong>NO Vote:</strong> ${item.impact_no}</p>
-                </div>
-                <div class="election-type-tag">${item.election_type}</div>
-                <span class="view-on-map" onclick="focusJurisdiction('${item.jurId}', '${item.jurType}')">Focus on Map</span>
-            `;
-            ballotSection.appendChild(card);
-        });
-    }
-
-    resultsDiv.appendChild(ballotSection);
 }
 
 function focusJurisdiction(id, type) {
@@ -402,7 +375,7 @@ function focusJurisdiction(id, type) {
             item.layer.openPopup();
         } else {
             // Reset other layers to default
-            const color = item.color || getDistrictColor(item.type, item.id);
+            const color = getDistrictColor(item.type);
             item.layer.setStyle({
                 color: color,
                 weight: 2,
