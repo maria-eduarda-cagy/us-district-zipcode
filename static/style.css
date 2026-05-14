@@ -111,6 +111,8 @@ main {
 
 #map {
     flex: 2;
+    position: relative;
+    z-index: 0;
 }
 
 #info-panel {
@@ -209,13 +211,14 @@ main {
 }
 
 .view-on-map {
-    display: inline-block;
+    display: flex;
     margin-top: 0.5rem;
     font-size: 0.8rem;
     color: #3498db;
     text-decoration: none;
     cursor: pointer;
     font-weight: bold;
+    height: 100%;
 }
 
 .election-type-tag {
@@ -398,11 +401,16 @@ main {
 
 .sample-audit {
     display: flex;
-    gap: 0.8rem;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: flex-start;
     font-size: 0.8rem;
     color: #7f8c8d;
+}
+
+.sample-audit .view-on-map {
+    margin-top: 0;
+    height: auto;
 }
 
 .sample-layer {
