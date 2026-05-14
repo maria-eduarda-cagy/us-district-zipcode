@@ -243,6 +243,17 @@ main {
     box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
 
+.office-ballot-card.is-dim {
+    opacity: 0.28;
+    filter: grayscale(1) saturate(0);
+}
+
+.office-ballot-card.is-active {
+    opacity: 1;
+    filter: none;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+}
+
 .ballot-card:hover {
     transform: translateY(-2px);
 }

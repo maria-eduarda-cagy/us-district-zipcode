@@ -68,6 +68,7 @@ function clearSearch() {
     clearOnNextPopupClose = false;
     activeDistrictCardKey = null;
     updateDistrictCardFocus(null);
+    updateOfficeCardFocus(null);
 
     const markerToRemove = marker;
     marker = null;
@@ -99,6 +100,16 @@ function updateDistrictCardFocus(activeKey) {
     cards.forEach((card) => {
         const key = card.getAttribute('data-jur-key');
         const isActive = activeKey && key === activeKey;
+        card.classList.toggle('is-active', Boolean(isActive));
+        card.classList.toggle('is-dim', Boolean(activeKey) && !isActive);
+    });
+}
+
+function updateOfficeCardFocus(activeKey) {
+    const cards = document.querySelectorAll('.office-ballot-card');
+    cards.forEach((card) => {
+        const key = card.getAttribute('data-jur-key');
+        const isActive = activeKey && key && key === activeKey;
         card.classList.toggle('is-active', Boolean(isActive));
         card.classList.toggle('is-dim', Boolean(activeKey) && !isActive);
     });
@@ -180,6 +191,7 @@ function initMap() {
         if (activeDistrictCardKey) {
             activeDistrictCardKey = null;
             updateDistrictCardFocus(null);
+            updateOfficeCardFocus(null);
             resetDistrictLayerStyles();
             if (marker && marker.getLatLng) {
                 try { map.panTo(marker.getLatLng()); } catch {}
@@ -425,7 +437,11 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 
             levels[level].forEach(contest => {
                 const card = document.createElement('div');
-                card.className = 'sample-ballot-card';
+                card.className = 'sample-ballot-card office-ballot-card';
+
+                if (contest.district_layer_type && contest.district_id) {
+                    card.setAttribute('data-jur-key', `${contest.district_layer_type}:${contest.district_id}`);
+                }
 
                 const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
                 const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
@@ -463,6 +479,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                 resultsDiv.appendChild(card);
             });
         });
+        updateOfficeCardFocus(activeDistrictCardKey);
     } else {
         const empty = document.createElement('p');
         empty.className = 'sample-ballot-note';
@@ -476,6 +493,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 function focusJurisdiction(id, type) {
     activeDistrictCardKey = `${type || ''}:${id || ''}`;
     updateDistrictCardFocus(activeDistrictCardKey);
+    updateOfficeCardFocus(activeDistrictCardKey);
 
     districtLayers.forEach(item => {
         if (item.id === id && item.type === type) {
