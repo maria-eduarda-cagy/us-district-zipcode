@@ -3,6 +3,9 @@ let marker;
 let districtLayers = [];
 let layerControl;
 let overlays = {};
+let hasActiveSearch = false;
+let clearOnNextPopupClose = false;
+let activeDistrictCardKey = null;
 
 const SUPABASE_FUNCTIONS_BASE = 'https://admgbmqudusymriuirmq.supabase.co/functions/v1';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbWdibXF1ZHVzeW1yaXVpcm1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDY2NjksImV4cCI6MjA5NDIyMjY2OX0.7nixMV4v-wRGzyGVsl1PqrLCKn_OVJgO8_Bab6GbSoM';
@@ -18,6 +21,7 @@ function supabaseFunctionHeaders() {
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     document.getElementById('search-btn').addEventListener('click', handleSearch);
+    document.getElementById('clear-btn')?.addEventListener('click', clearSearch);
     
     const addressInput = document.getElementById('address-input');
     addressInput.addEventListener('keypress', (e) => {
@@ -33,7 +37,72 @@ document.addEventListener('DOMContentLoaded', () => {
             closeAllLists();
         }
     });
+
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const closeBtn = target.closest('a.leaflet-popup-close-button');
+        if (!closeBtn) return;
+        clearOnNextPopupClose = true;
+    }, true);
+
+    window.addEventListener('resize', () => {
+        if (!map) return;
+        clearTimeout(window.__leafletResizeTimer);
+        window.__leafletResizeTimer = setTimeout(() => {
+            try { map.invalidateSize(); } catch {}
+        }, 150);
+    });
 });
+
+function setSearchActive(active) {
+    hasActiveSearch = Boolean(active);
+    const clearBtn = document.getElementById('clear-btn');
+    if (clearBtn) {
+        clearBtn.disabled = !hasActiveSearch;
+    }
+}
+
+function clearSearch() {
+    closeAllLists();
+    clearOnNextPopupClose = false;
+    activeDistrictCardKey = null;
+    updateDistrictCardFocus(null);
+
+    const markerToRemove = marker;
+    marker = null;
+    if (markerToRemove) {
+        map.removeLayer(markerToRemove);
+    }
+
+    districtLayers.forEach(item => {
+        try { map.removeLayer(item.layer); } catch {}
+    });
+    districtLayers = [];
+
+    for (let key in overlays) {
+        try { map.removeLayer(overlays[key]); } catch {}
+        try { layerControl.removeLayer(overlays[key]); } catch {}
+    }
+    overlays = {};
+
+    map.setView([37.0902, -95.7129], 4);
+
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = '<p class="placeholder">Search for an address to see districts and candidates.</p><div id="downballot-results"></div>';
+
+    setSearchActive(false);
+}
+
+function updateDistrictCardFocus(activeKey) {
+    const cards = document.querySelectorAll('.district-found-card');
+    cards.forEach((card) => {
+        const key = card.getAttribute('data-jur-key');
+        const isActive = activeKey && key === activeKey;
+        card.classList.toggle('is-active', Boolean(isActive));
+        card.classList.toggle('is-dim', Boolean(activeKey) && !isActive);
+    });
+}
 
 function debounce(func, wait) {
     let timeout;
@@ -89,6 +158,12 @@ function initMap() {
 
     // Initialize Layer Control
     layerControl = L.control.layers(null, null, { collapsed: false }).addTo(map);
+
+    map.on('popupclose', () => {
+        if (!clearOnNextPopupClose) return;
+        clearOnNextPopupClose = false;
+        clearSearch();
+    });
 }
 
 const DISTRICT_COLORS = {
@@ -117,6 +192,9 @@ async function handleSearch() {
     if (!address) return;
 
     closeAllLists();
+    if (hasActiveSearch) {
+        clearSearch();
+    }
 
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
@@ -199,6 +277,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     if (!memberships || memberships.length === 0) {
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<p class="placeholder">Address found, but no legislative jurisdictions match this specific location.</p>';
+        setSearchActive(true);
         return;
     }
 
@@ -260,9 +339,11 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 
     memberships.forEach(m => {
         const card = document.createElement('div');
-        card.className = 'ballot-card';
+        card.className = 'ballot-card district-found-card';
         const color = getDistrictColor(m.layer_type);
         card.style.borderLeft = `5px solid ${color}`;
+        const jurKey = `${m.layer_type || ''}:${m.district_id || ''}`;
+        card.setAttribute('data-jur-key', jurKey);
 
         const sourceLink = m.source_url ? `<a href="${m.source_url}" target="_blank" class="sample-source-link">Source</a>` : '';
         const idLine = m.district_id ? `<p class="jur-name"><strong>${m.district_id}</strong></p>` : '';
@@ -283,6 +364,8 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         resultsDiv.appendChild(card);
     });
 
+    updateDistrictCardFocus(activeDistrictCardKey);
+
     const ballotTitle = document.createElement('h3');
     ballotTitle.className = 'section-title';
     ballotTitle.innerText = 'Offices on Your Ballot';
@@ -293,6 +376,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         warn.className = 'sample-ballot-warning';
         warn.innerText = `Ballot unavailable: ${sampleBallotError}`;
         resultsDiv.appendChild(warn);
+        setSearchActive(true);
         return;
     }
 
@@ -360,9 +444,14 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         empty.innerText = 'No offices were generated for this address.';
         resultsDiv.appendChild(empty);
     }
+
+    setSearchActive(true);
 }
 
 function focusJurisdiction(id, type) {
+    activeDistrictCardKey = `${type || ''}:${id || ''}`;
+    updateDistrictCardFocus(activeDistrictCardKey);
+
     districtLayers.forEach(item => {
         if (item.id === id && item.type === type) {
             // Highlight the selected layer

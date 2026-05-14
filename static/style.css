@@ -31,6 +31,8 @@ h1 {
     display: flex;
     gap: 0.5rem;
     position: relative;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .search-toggle {
@@ -49,6 +51,7 @@ h1 {
 .input-group {
     position: relative;
     width: 400px;
+    max-width: 100%;
 }
 
 #address-input {
@@ -103,6 +106,25 @@ h1 {
     background-color: #2980b9;
 }
 
+#clear-btn {
+    padding: 0.5rem 1rem;
+    background-color: #7f8c8d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#clear-btn:hover:not(:disabled) {
+    background-color: #636e72;
+}
+
+#clear-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 main {
     display: flex;
     flex: 1;
@@ -122,6 +144,56 @@ main {
     overflow-y: auto;
     border-left: 1px solid #ddd;
     box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+@media (max-width: 900px) {
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    h1 {
+        text-align: center;
+    }
+
+    .search-container {
+        width: 100%;
+    }
+
+    .input-group {
+        width: 100%;
+    }
+
+    main {
+        flex-direction: column;
+    }
+
+    #map {
+        flex: none;
+        height: 45vh;
+        min-height: 320px;
+    }
+
+    #info-panel {
+        flex: 1;
+        border-left: none;
+        border-top: 1px solid #ddd;
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 600px) {
+    .search-toggle {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    #search-btn,
+    #clear-btn {
+        flex: 1 1 120px;
+    }
 }
 
 .placeholder {
@@ -158,6 +230,17 @@ main {
     margin-bottom: 1rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     transition: transform 0.2s;
+}
+
+.district-found-card.is-dim {
+    opacity: 0.28;
+    filter: grayscale(1) saturate(0);
+}
+
+.district-found-card.is-active {
+    opacity: 1;
+    filter: none;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
 
 .ballot-card:hover {
