@@ -104,6 +104,21 @@ function updateDistrictCardFocus(activeKey) {
     });
 }
 
+function resetDistrictLayerStyles() {
+    districtLayers.forEach(item => {
+        const color = getDistrictColor(item.type);
+        try {
+            item.layer.setStyle({
+                color: color,
+                weight: 2,
+                opacity: 0.5,
+                fillColor: color,
+                fillOpacity: 0.1
+            });
+        } catch {}
+    });
+}
+
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -162,6 +177,16 @@ function initMap() {
     map.on('popupclose', () => {
         if (!clearOnNextPopupClose) return;
         clearOnNextPopupClose = false;
+        if (activeDistrictCardKey) {
+            activeDistrictCardKey = null;
+            updateDistrictCardFocus(null);
+            resetDistrictLayerStyles();
+            if (marker && marker.getLatLng) {
+                try { map.panTo(marker.getLatLng()); } catch {}
+                try { marker.openPopup(); } catch {}
+            }
+            return;
+        }
         clearSearch();
     });
 }
