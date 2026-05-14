@@ -1,50 +1,52 @@
 # ElectorMap & Downballot Finder (DMV + 2026 cycle)
 
-Este projeto é um MVP para identificar distritos legislativos (DC/MD/VA), gerar um “sample ballot” (somente cargos, sem candidatos) e exibir calendário eleitoral (quando disponível), usando geocodificação de endereços + camadas geográficas (TIGER/Line + fontes autoritativas locais).
+English version. Versão em português: [README.pt-BR.md](README.pt-BR.md).
 
-## Funcionalidades
-- **Geocodificação hierárquica**: Converte endereço em coordenadas e normaliza o endereço (priorizando fontes locais quando aplicável, com fallback).
-- **Lógica espacial (point-in-polygon)**: Identifica distritos via PostGIS (Supabase) com camadas TIGER/Line carregadas no banco.
-- **Mapa interativo**: Visualiza a localização e limites dos distritos via Leaflet.js.
-- **Sample Ballot (Offices Only)**: Gera uma lista de cargos por distrito e at-large; suporta “downballot” opcional.
-- **Calendário eleitoral**: Mostra o calendário do ciclo 2026 (atualmente Maryland).
+This project is an MVP to identify legislative districts (DC/MD/VA), generate a “sample ballot” (offices only, no candidates), and show an election calendar (when available), using address geocoding + geographic layers (TIGER/Line + local authoritative sources).
 
-## Requisitos Prévios
-- Supabase (Postgres + PostGIS) com as Edge Functions `search` e `sample-ballot` publicadas.
-- Deno (para rodar os testes localmente).
-- [Opcional] Python 3.9+ (apenas para rodar o servidor legado local e/ou scripts auxiliares).
+## Features
+- **Hierarchical geocoding**: Converts an address into coordinates and normalizes the address (prioritizing local sources when applicable, with fallback).
+- **Spatial logic (point-in-polygon)**: Finds districts via PostGIS (Supabase) with TIGER/Line layers loaded in the database.
+- **Interactive map**: Visualizes the location and district boundaries via Leaflet.js.
+- **Sample Ballot (Offices Only)**: Generates an offices list by district and at-large; supports optional “downballot”.
+- **Election calendar**: Shows the 2026 cycle calendar (currently Maryland).
 
-## Guia de Instalação e Execução
+## Prerequisites
+- Supabase (Postgres + PostGIS) with Edge Functions `search` and `sample-ballot` deployed.
+- Deno (to run tests locally).
+- [Optional] Python 3.9+ (only for the legacy local server and/or helper scripts).
 
-### Passo 1: Clonar o Repositório
+## Setup & Run
+
+### Step 1: Clone the repository
 ```bash
-git clone <url-do-repositorio>
+git clone <repo-url>
 cd us-district-zipcode
 ```
 
-### Passo 2: Configurar variáveis de ambiente (para testes locais e chamadas via curl)
-Crie um arquivo `.env` (não commitar) contendo ao menos:
+### Step 2: Configure environment variables (for local tests and curl calls)
+Create a `.env` file (do not commit) containing at least:
 ```bash
 SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_ANON_KEY=<anon-jwt-que-comeca-com-eyJ...>
+SUPABASE_ANON_KEY=<anon-jwt-starting-with-eyJ...>
 ```
 
-Observações:
-- A anon key usada aqui deve ser o JWT (geralmente começa com `eyJ...`). Não use a publishable key (`sb_publishable...`).
-- Para desenvolvimento local com `supabase functions serve`, este projeto também suporta:
+Notes:
+- The anon key used here must be the JWT (usually starts with `eyJ...`). Do not use the publishable key (`sb_publishable...`).
+- For local development with `supabase functions serve`, this project also supports:
   - `TARGET_SUPABASE_URL`
   - `TARGET_SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
-## Validação de Teste
-Para verificar rapidamente:
-- Abra o frontend e busque um endereço em MD/DC/VA (o input já vem com um exemplo em MD).
-- Na seção **Sample Ballot (Offices Only)**:
-  - Com o checkbox “Include downballot offices” desligado: aparece o top-of-ticket (ex.: U.S. Representative, State Senator, statewide MD).
-  - Com o checkbox ligado: aparecem também downballots (ex.: county, school, delegate subdistrict, quando aplicável).
+## Quick Validation
+To quickly verify:
+- Open the frontend and search an address in MD/DC/VA (the input already comes with an MD example).
+- In **Sample Ballot (Offices Only)**:
+  - With “Include downballot offices” unchecked: you get top-of-ticket (e.g., U.S. Representative, State Senator, etc.).
+  - With it checked: you also get downballot offices (e.g., county, school, etc., when applicable).
 
-Testes por API (produção, exemplo):
+API tests (production example):
 ```bash
 curl -s -X POST "https://<project-ref>.supabase.co/functions/v1/search" \
   -H "Content-Type: application/json" \
@@ -59,22 +61,22 @@ curl -s -X POST "https://<project-ref>.supabase.co/functions/v1/sample-ballot?in
   -d '{"address":"104 Ashton Oaks Court, Ashton, Maryland 20861"}' | head
 ```
 
-## Testes automatizados
-Este repositório inclui testes unitários das Edge Functions (sem rede, usando mocks).
+## Automated Tests
+This repository includes unit tests for the Edge Functions (offline, using mocks).
 
-Rodar localmente:
+Run locally:
 ```bash
 deno test -A supabase/functions/search supabase/functions/sample-ballot
 ```
 
 CI:
-- O GitHub Actions executa os testes automaticamente em push/PR.
+- GitHub Actions runs tests automatically on push/PR.
 
-## Estrutura do Projeto
+## Project Structure
 - `supabase/functions/search`: Edge Function `search` (address → geocode → PostGIS RPC → memberships).
-- `supabase/functions/sample-ballot`: Edge Function `sample-ballot` (gera contests/offices a partir das memberships).
-- `supabase/config.toml`: Config das Edge Functions (inclui `verify_jwt`).
-- `main.py`: Servidor FastAPI legado (útil para desenvolvimento antigo/local; não é necessário para o caminho Supabase).
-- `download_data.py`: Script auxiliar para baixar dados locais (quando aplicável).
-- `static/`: Frontend (HTML/JS/CSS) utilizando Leaflet.js.
-- `requirements.txt`: Lista de bibliotecas Python necessárias.
+- `supabase/functions/sample-ballot`: Edge Function `sample-ballot` (generates contests/offices from memberships).
+- `supabase/config.toml`: Edge Functions config (includes `verify_jwt`).
+- `main.py`: Legacy FastAPI server (not required for the Supabase path).
+- `download_data.py`: Helper script to download local data (when applicable).
+- `static/`: Frontend (HTML/JS/CSS) using Leaflet.js.
+- `requirements.txt`: Python dependencies list.
