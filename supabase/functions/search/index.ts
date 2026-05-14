@@ -13,6 +13,13 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+function normalizeInputAddress(address: string) {
+  return address
+    .replace(/\s+/g, " ")
+    .replace(/,\s*(USA|United States)$/i, "")
+    .trim()
+}
+
 async function geocodeCensus(address: string, fetchImpl: typeof fetch) {
   const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress")
   url.searchParams.set("address", address)
@@ -45,6 +52,33 @@ async function geocodeCensus(address: string, fetchImpl: typeof fetch) {
   return { lat, lon, census_block_geoid, matched_address, source_used: "Census", precision_class: "interpolated" }
 }
 
+async function geocodeArcGIS(address: string, fetchImpl: typeof fetch) {
+  const url = new URL(
+    "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates",
+  )
+  url.searchParams.set("f", "json")
+  url.searchParams.set("singleLine", address)
+  url.searchParams.set("countryCode", "USA")
+  url.searchParams.set("maxLocations", "1")
+  url.searchParams.set("outFields", "Match_addr,Addr_type")
+
+  const resp = await fetchImpl(url.toString(), { method: "GET" })
+  if (!resp.ok) return null
+  const data = await resp.json()
+  const candidates = data?.candidates
+  if (!Array.isArray(candidates) || candidates.length === 0) return null
+
+  const c0 = candidates[0]
+  const lat = c0?.location?.y
+  const lon = c0?.location?.x
+  if (typeof lat !== "number" || typeof lon !== "number") return null
+
+  const matched_address = c0?.address ?? null
+  const addrType = typeof c0?.attributes?.Addr_type === "string" ? c0.attributes.Addr_type : ""
+  const precision_class = addrType === "PointAddress" ? "rooftop" : "interpolated"
+  return { lat, lon, census_block_geoid: null, matched_address, source_used: "ArcGIS", precision_class }
+}
+
 export type EdgeDeps = {
   fetch?: typeof fetch
   envGet?: (name: string) => string | undefined
@@ -68,12 +102,12 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     return jsonResponse({ error: "Invalid JSON body" }, 400)
   }
 
-  const address = typeof payload?.address === "string" ? payload.address.trim() : ""
+  const address = typeof payload?.address === "string" ? normalizeInputAddress(payload.address) : ""
   if (!address) {
     return jsonResponse({ error: "Missing address" }, 400)
   }
 
-  const geocoded = await geocodeCensus(address, fetchImpl)
+  const geocoded = (await geocodeCensus(address, fetchImpl)) ?? (await geocodeArcGIS(address, fetchImpl))
   if (!geocoded) {
     return jsonResponse({ error: "Address not found" }, 404)
   }

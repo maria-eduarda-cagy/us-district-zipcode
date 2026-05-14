@@ -30,6 +30,9 @@ Deno.test("search: address not found returns 404", async () => {
     if (url.includes("geocoding.geo.census.gov")) {
       return new Response(JSON.stringify({ result: { addressMatches: [] } }), { status: 200 })
     }
+    if (url.includes("geocode.arcgis.com") && url.includes("findAddressCandidates")) {
+      return new Response(JSON.stringify({ candidates: [] }), { status: 200 })
+    }
     throw new Error(`Unexpected fetch: ${url}`)
   }
 
@@ -100,4 +103,42 @@ Deno.test("search: success returns memberships with parsed geometry", async () =
   assertEquals(body.lon, -77.0)
   assertEquals(Array.isArray(body.memberships), true)
   assertEquals(body.memberships[0].geometry.type, "Polygon")
+})
+
+Deno.test("search: falls back to ArcGIS when Census fails", async () => {
+  const fakeFetch: typeof fetch = async (input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+    if (url.includes("geocoding.geo.census.gov")) {
+      return new Response(JSON.stringify({ result: { addressMatches: [] } }), { status: 200 })
+    }
+    if (url.includes("geocode.arcgis.com") && url.includes("findAddressCandidates")) {
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { address: "OK", location: { x: -77.0, y: 39.0 }, attributes: { Addr_type: "PointAddress" } },
+          ],
+        }),
+        { status: 200 },
+      )
+    }
+    if (url.endsWith("/rest/v1/rpc/rpc_district_lookup")) {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+
+  const resp = await handleRequest(
+    new Request("http://localhost", { method: "POST", body: JSON.stringify({ address: "x, USA" }) }),
+    {
+      fetch: fakeFetch,
+      envGet: makeEnv({
+        TARGET_SUPABASE_URL: "https://example.supabase.co",
+        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+      }),
+    },
+  )
+
+  assertEquals(resp.status, 200)
+  const body = await resp.json()
+  assertEquals(body.address_canonical.source_used, "ArcGIS")
 })

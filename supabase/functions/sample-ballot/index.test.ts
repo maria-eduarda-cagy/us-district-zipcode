@@ -99,3 +99,43 @@ Deno.test("sample-ballot: include_downballot=true includes local contests", asyn
   assertEquals(body.contests[body.contests.length - 1].jurisdiction_level, "Local")
 })
 
+Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {
+  const fakeFetch: typeof fetch = async (input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+    if (url.includes("geocoding.geo.census.gov")) {
+      return new Response(JSON.stringify({ result: { addressMatches: [] } }), { status: 200 })
+    }
+    if (url.includes("geocode.arcgis.com") && url.includes("findAddressCandidates")) {
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { address: "OK", location: { x: -77.0, y: 39.0 }, attributes: { Addr_type: "PointAddress" } },
+          ],
+        }),
+        { status: 200 },
+      )
+    }
+    if (url.endsWith("/rest/v1/rpc/rpc_district_lookup")) {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot?include_downballot=false", {
+      method: "POST",
+      body: JSON.stringify({ address: "x, USA" }),
+    }),
+    {
+      fetch: fakeFetch,
+      envGet: makeEnv({
+        TARGET_SUPABASE_URL: "https://example.supabase.co",
+        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+      }),
+    },
+  )
+
+  assertEquals(resp.status, 200)
+  const body = await resp.json()
+  assertEquals(body.address_canonical.source_used, "ArcGIS")
+})
