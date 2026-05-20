@@ -315,6 +315,10 @@ main {
     height: 100%;
 }
 
+.leaflet-popup-close-button {
+    cursor: pointer;
+}
+
 .election-type-tag {
     font-size: 0.75rem;
     color: #7f8c8d;
