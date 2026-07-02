@@ -530,3 +530,104 @@ main {
 .sample-source-link:hover {
     text-decoration: underline;
 }
+
+.sample-office-category {
+    margin: 0.2rem 0 0 0;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sample-vote-for {
+    margin: 0.5rem 0 0.3rem 0;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #8e44ad;
+}
+
+.sample-candidates {
+    list-style: none;
+    margin: 0.4rem 0 0.6rem 0;
+    padding: 0;
+}
+
+.sample-candidate {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #f2f2f2;
+    font-size: 0.92rem;
+    color: #2c3e50;
+}
+
+.sample-candidate:last-child {
+    border-bottom: none;
+}
+
+.candidate-name {
+    font-weight: 500;
+}
+
+.candidate-tags {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.candidate-tag {
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.candidate-tag.incumbent {
+    background-color: #fdf3e0;
+    color: #b8860b;
+}
+
+.candidate-tag.unopposed {
+    background-color: #eafaf1;
+    color: #1e8449;
+}
+
+.sample-no-candidates {
+    font-size: 0.85rem;
+    color: #999;
+    font-style: italic;
+    margin: 0.4rem 0 0.6rem 0;
+}
+
+.event-rows {
+    margin-top: 0.5rem;
+}
+
+.event-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #f2f2f2;
+    font-size: 0.88rem;
+}
+
+.event-row:last-child {
+    border-bottom: none;
+}
+
+.event-label {
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.event-date {
+    color: #7f8c8d;
+}
+
+.polling-card .sample-audit {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}

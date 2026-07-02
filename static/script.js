@@ -7,13 +7,13 @@ let hasActiveSearch = false;
 let clearOnNextPopupClose = false;
 let activeDistrictCardKey = null;
 
-// Fallback para valores padrão (caso as variáveis falhem temporariamente)
-const DEFAULT_SUPABASE_URL = 'https://admgbmqudusymriuirmq.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbWdibXF1ZHVzeW1yaXVpcm1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDY2NjksImV4cCI6MjA5NDIyMjY2OX0.7nixMV4v-wRGzyGVsl1PqrLCKn_OVJgO8_Bab6GbSoM';
+// Valores injetados em tempo de execução via /config.js (gerado a partir de variáveis de ambiente)
+const SUPABASE_URL = window.__APP_CONFIG__?.SUPABASE_URL;
+const SUPABASE_ANON_KEY = window.__APP_CONFIG__?.SUPABASE_ANON_KEY;
 
-// Pegar valores do config.js ou usar fallback
-const SUPABASE_URL = (window.__APP_CONFIG__?.SUPABASE_URL) || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY = (window.__APP_CONFIG__?.SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('Configuração ausente: SUPABASE_URL/SUPABASE_ANON_KEY não foram carregados via /config.js.');
+}
 
 // Calculate functions base URL from SUPABASE_URL (as you requested)
 const baseUrl = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
@@ -429,7 +429,9 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     if (sampleBallot && Array.isArray(sampleBallot.contests) && sampleBallot.contests.length > 0) {
         const note = document.createElement('p');
         note.className = 'sample-ballot-note';
-        note.innerText = 'Generated from authoritative geocoding + district layers. No candidate names included.';
+        note.innerText = sampleBallot.ballot_status === 'loaded'
+            ? 'Candidates and contests from a certified ballot style for this precinct.'
+            : 'Generated from authoritative geocoding + district layers.';
         resultsDiv.appendChild(note);
 
         const levels = { 'Federal': [], 'State': [], 'Local': [] };
@@ -454,6 +456,8 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 
                 const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
                 const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
+                const contestTitle = contest.contest_label || contest.office_name;
+                const voteForLabel = contest.vote_for > 1 ? `Vote for up to ${contest.vote_for}` : 'Vote for 1';
 
                 const auditLink = contest.source_url
                     ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
@@ -468,14 +472,30 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                     ? `<span class="view-on-map" onclick="focusJurisdiction('${contest.district_id}', '${contest.district_layer_type}')">Focus on Map</span>`
                     : '';
 
+                const candidates = Array.isArray(contest.candidates) ? contest.candidates : [];
+                const candidatesList = candidates.length > 0
+                    ? `<ul class="sample-candidates">${candidates.map(cand => `
+                        <li class="sample-candidate">
+                            <span class="candidate-name">${cand.name}</span>
+                            <span class="candidate-tags">
+                                ${cand.incumbent ? '<span class="candidate-tag incumbent">Incumbent</span>' : ''}
+                                ${cand.unopposed ? '<span class="candidate-tag unopposed">Unopposed</span>' : ''}
+                            </span>
+                        </li>
+                    `).join('')}</ul>`
+                    : '<p class="sample-no-candidates">No candidates loaded for this contest yet.</p>';
+
                 card.innerHTML = `
                     <div class="sample-ballot-header">
-                        <span class="sample-office">${contest.office_name}</span>
+                        <span class="sample-office">${contestTitle}</span>
                         <div class="sample-tags">
                             <span class="sample-tag level">${contest.jurisdiction_level}</span>
                             <span class="sample-tag scope">${scopeLabel}</span>
                         </div>
                     </div>
+                    ${contest.office_name && contest.office_name !== contestTitle ? `<p class="sample-office-category">${contest.office_name}</p>` : ''}
+                    <p class="sample-vote-for">${voteForLabel}</p>
+                    ${candidatesList}
                     ${districtIdLine}
                     ${districtLine}
                     <div class="sample-audit">
@@ -496,7 +516,107 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         resultsDiv.appendChild(empty);
     }
 
+    renderElectionEvents(resultsDiv, sampleBallot);
+    renderPollingLocations(resultsDiv, sampleBallot);
+
     setSearchActive(true);
+}
+
+function formatEventDate(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    return date.toLocaleString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+    });
+}
+
+const DEADLINE_LABELS = {
+    election_day: 'Election Day',
+    early_voting_start: 'Early Voting Begins',
+    early_voting_end: 'Early Voting Ends',
+    candidate_filing_deadline_nonprincipal_party: 'Candidate Filing Deadline',
+};
+
+function renderElectionEvents(resultsDiv, sampleBallot) {
+    const events = Array.isArray(sampleBallot?.election_events) ? sampleBallot.election_events : [];
+    if (events.length === 0) return;
+
+    const title = document.createElement('h3');
+    title.className = 'section-title';
+    title.innerText = 'Election Events';
+    resultsDiv.appendChild(title);
+
+    const byElection = new Map();
+    events.forEach(e => {
+        if (!byElection.has(e.election_id)) byElection.set(e.election_id, []);
+        byElection.get(e.election_id).push(e);
+    });
+
+    byElection.forEach(evs => {
+        const card = document.createElement('div');
+        card.className = 'sample-ballot-card election-events-card';
+        const first = evs[0];
+        const statusTag = first.election_status === 'certified'
+            ? '<span class="sample-tag scope">Certified</span>'
+            : '<span class="sample-tag level">Scheduled</span>';
+
+        const rows = evs.map(e => `
+            <div class="event-row">
+                <span class="event-label">${DEADLINE_LABELS[e.deadline_type] || e.deadline_type}</span>
+                <span class="event-date">${formatEventDate(e.deadline_at)}</span>
+            </div>
+        `).join('');
+
+        card.innerHTML = `
+            <div class="sample-ballot-header">
+                <span class="sample-office">${first.election_name}</span>
+                <div class="sample-tags">${statusTag}</div>
+            </div>
+            <div class="event-rows">${rows}</div>
+        `;
+        resultsDiv.appendChild(card);
+    });
+}
+
+function renderPollingLocations(resultsDiv, sampleBallot) {
+    const locations = Array.isArray(sampleBallot?.polling_locations) ? sampleBallot.polling_locations : [];
+    if (locations.length === 0) return;
+
+    const title = document.createElement('h3');
+    title.className = 'section-title';
+    title.innerText = 'Nearby Polling Locations';
+    resultsDiv.appendChild(title);
+
+    locations.forEach(loc => {
+        const card = document.createElement('div');
+        card.className = 'sample-ballot-card polling-card';
+
+        const addr = loc.address || {};
+        const addressLine = [addr.street, `${addr.city || ''}, ${addr.state || ''} ${addr.zip5 || ''}`.trim()]
+            .filter(Boolean).join(', ');
+        const distanceLabel = typeof loc.distance_meters === 'number'
+            ? `${(loc.distance_meters / 1609.34).toFixed(1)} mi away`
+            : '';
+        const dateRange = (loc.start_date && loc.end_date) ? `${loc.start_date} to ${loc.end_date}` : '';
+
+        card.innerHTML = `
+            <div class="sample-ballot-header">
+                <span class="sample-office">${loc.name}</span>
+                <div class="sample-tags">
+                    <span class="sample-tag level">${(loc.location_type || '').replace('_', ' ')}</span>
+                </div>
+            </div>
+            <p class="sample-district">${addressLine}</p>
+            <div class="sample-audit">
+                ${loc.hours ? `<span>${loc.hours}</span>` : ''}
+                ${dateRange ? `<span>${dateRange}</span>` : ''}
+                ${distanceLabel ? `<span class="sample-rcv">${distanceLabel}</span>` : ''}
+            </div>
+        `;
+        resultsDiv.appendChild(card);
+    });
 }
 
 function focusJurisdiction(id, type) {
