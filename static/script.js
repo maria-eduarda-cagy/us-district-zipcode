@@ -233,6 +233,23 @@ function getDistrictColor(type) {
     return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
 }
 
+function partyTagClass(party) {
+    if (!party) return 'nonpartisan';
+    const p = party.trim().toLowerCase();
+    if (p.startsWith('cross')) return 'cross-filed';
+    if (p.startsWith('dem')) return 'democratic';
+    if (p.startsWith('rep')) return 'republican';
+    return 'nonpartisan';
+}
+
+function partyTagLabel(party) {
+    const cls = partyTagClass(party);
+    if (cls === 'cross-filed') return 'Cross-Filing';
+    if (cls === 'democratic') return 'Democrat';
+    if (cls === 'republican') return 'Republican';
+    return 'Non-Partisan';
+}
+
 async function handleSearch() {
     const address = document.getElementById('address-input').value;
     if (!address) return;
@@ -478,6 +495,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                         <li class="sample-candidate">
                             <span class="candidate-name">${cand.name}</span>
                             <span class="candidate-tags">
+                                <span class="candidate-tag ${partyTagClass(cand.party)}">${partyTagLabel(cand.party)}</span>
                                 ${cand.incumbent ? '<span class="candidate-tag incumbent">Incumbent</span>' : ''}
                                 ${cand.unopposed ? '<span class="candidate-tag unopposed">Unopposed</span>' : ''}
                             </span>
