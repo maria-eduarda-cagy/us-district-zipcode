@@ -7,13 +7,36 @@ from shapely.geometry import Point
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
 from datetime import datetime, timezone
 import threading
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # If python-dotenv is not installed, just use existing env vars
+    pass
+
 app = FastAPI()
+
+# Frontend config endpoint
+@app.get("/config.js", response_class=PlainTextResponse)
+def get_config():
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+
+    if not supabase_url or not supabase_anon_key:
+        raise HTTPException(status_code=500, detail="Environment variables not configured")
+
+    return f"""window.__APP_CONFIG__ = {{
+    SUPABASE_URL: '{supabase_url}',
+    SUPABASE_ANON_KEY: '{supabase_anon_key}'
+}};"""
 
 # Configuration
 DATA_DIR = "data"

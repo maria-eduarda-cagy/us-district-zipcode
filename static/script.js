@@ -7,8 +7,12 @@ let hasActiveSearch = false;
 let clearOnNextPopupClose = false;
 let activeDistrictCardKey = null;
 
-const SUPABASE_FUNCTIONS_BASE = 'https://admgbmqudusymriuirmq.supabase.co/functions/v1';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbWdibXF1ZHVzeW1yaXVpcm1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDY2NjksImV4cCI6MjA5NDIyMjY2OX0.7nixMV4v-wRGzyGVsl1PqrLCKn_OVJgO8_Bab6GbSoM';
+const SUPABASE_URL = window.__APP_CONFIG__.SUPABASE_URL;
+const SUPABASE_ANON_KEY = window.__APP_CONFIG__.SUPABASE_ANON_KEY;
+
+// Calculate functions base URL from SUPABASE_URL (as you requested)
+const baseUrl = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
+const SUPABASE_FUNCTIONS_BASE = baseUrl + "/functions/v1";
 
 function supabaseFunctionHeaders() {
     return {

@@ -54,8 +54,8 @@ Deno.test("sample-ballot: include_downballot=false returns only federal/state co
     {
       fetch: makeFetch(memberships),
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )
@@ -85,8 +85,8 @@ Deno.test("sample-ballot: include_downballot=true includes local contests", asyn
     {
       fetch: makeFetch(memberships),
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )
@@ -129,8 +129,8 @@ Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {
     {
       fetch: fakeFetch,
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )

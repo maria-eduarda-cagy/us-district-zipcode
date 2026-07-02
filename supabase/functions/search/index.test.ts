@@ -41,8 +41,8 @@ Deno.test("search: address not found returns 404", async () => {
     {
       fetch: fakeFetch,
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )
@@ -91,8 +91,8 @@ Deno.test("search: success returns memberships with parsed geometry", async () =
     {
       fetch: fakeFetch,
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )
@@ -132,8 +132,8 @@ Deno.test("search: falls back to ArcGIS when Census fails", async () => {
     {
       fetch: fakeFetch,
       envGet: makeEnv({
-        TARGET_SUPABASE_URL: "https://example.supabase.co",
-        TARGET_SUPABASE_SERVICE_ROLE_KEY: "service-role",
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role",
       }),
     },
   )

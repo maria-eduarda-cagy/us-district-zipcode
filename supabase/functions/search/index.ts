@@ -114,10 +114,8 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
 
   const debug = payload?.debug === true
 
-  const supabaseUrl =
-    (envGet("TARGET_SUPABASE_URL") ?? "").trim() || (envGet("SUPABASE_URL") ?? "").trim()
-  const serviceKey =
-    (envGet("TARGET_SUPABASE_SERVICE_ROLE_KEY") ?? "").trim() || (envGet("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim()
+  const supabaseUrl = (envGet("SUPABASE_URL") ?? "").trim()
+  const serviceKey = (envGet("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim()
   if (!supabaseUrl || !serviceKey) {
     return jsonResponse({ error: "Server misconfigured: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" }, 500)
   }

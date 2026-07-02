@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Run our test script
+./scripts/run-tests.sh
