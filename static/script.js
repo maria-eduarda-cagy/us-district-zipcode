@@ -7,13 +7,13 @@ let hasActiveSearch = false;
 let clearOnNextPopupClose = false;
 let activeDistrictCardKey = null;
 
-// Fallback para valores padrão (caso as variáveis falhem temporariamente)
-const DEFAULT_SUPABASE_URL = 'https://admgbmqudusymriuirmq.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbWdibXF1ZHVzeW1yaXVpcm1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDY2NjksImV4cCI6MjA5NDIyMjY2OX0.7nixMV4v-wRGzyGVsl1PqrLCKn_OVJgO8_Bab6GbSoM';
+// Valores injetados em tempo de execução via /config.js (gerado a partir de variáveis de ambiente)
+const SUPABASE_URL = window.__APP_CONFIG__?.SUPABASE_URL;
+const SUPABASE_ANON_KEY = window.__APP_CONFIG__?.SUPABASE_ANON_KEY;
 
-// Pegar valores do config.js ou usar fallback
-const SUPABASE_URL = (window.__APP_CONFIG__?.SUPABASE_URL) || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY = (window.__APP_CONFIG__?.SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('Configuração ausente: SUPABASE_URL/SUPABASE_ANON_KEY não foram carregados via /config.js.');
+}
 
 // Calculate functions base URL from SUPABASE_URL (as you requested)
 const baseUrl = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
