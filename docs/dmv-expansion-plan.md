@@ -1,51 +1,65 @@
-# Plano: de 1 endereço para o DMV inteiro
+# Plan: from 1 address to the whole DMV
 
-Última atualização: 2026-07-02. Ver escopo atual em [mvp-scope.md](mvp-scope.md).
+Last updated: 2026-07-02. See current scope in [mvp-scope.md](mvp-scope.md).
 
-Duas frentes independentes: **geografia** (onde ficam os distritos/precincts) e **dado eleitoral** (quem concorre, em qual ballot). A geografia é resolvível com scripts reutilizáveis; o dado eleitoral hoje depende de transcrição manual de PDF por falta de API estruturada.
+Two independent fronts: **geography** (where districts/precincts are) and **election data** (who's running, on which ballot). Geography is solvable with reusable scripts; election data today depends on manual PDF transcription due to the lack of a structured API.
 
-## Frente 1 — Geografia (expandir `district_layers`/`district_boundaries`)
+## Front 1 — Geography (expanding `district_layers`/`district_boundaries`)
 
-### Virginia: faltam Arlington, Alexandria, Prince William, Falls Church, Fairfax City, Manassas, Manassas Park
+### Virginia: missing Arlington, Alexandria, Prince William, Falls Church, Fairfax City, Manassas, Manassas Park
 
-Processo por localidade:
-1. Achar o servidor ArcGIS REST do condado/cidade (cada um publica o seu — não existe um serviço estadual único de precincts para VA, ao contrário de MD)
-2. Inspecionar `{MapServer}?f=json` para achar o `layer id` certo (distritos eleitorais, precincts) e o **nome oficial da camada** (não confiar em nome de arquivo antigo — foi exatamente o bug que corrigimos no layer de precincts de MD, que estava rotulado "2022" quando a fonte já tinha renomeado para "2026")
-3. Adicionar a entrada em `LAYERS` no `scripts/load_district_layers.py` com o mapper de campos correto (cada fonte usa nomes de propriedade diferentes)
-4. Rodar o script, revisar o SQL gerado, aplicar em lotes (arquivos grandes estouram o limite de 413 da API do Supabase — dividir em ~1.5MB por lote)
+Per-locality process:
+1. Find the county/city's ArcGIS REST server (each publishes its own — there's no single statewide precinct service for VA, unlike MD)
+2. Inspect `{MapServer}?f=json` to find the right `layer id` (election districts, precincts) and the **official layer name** (don't trust an old file name — this is exactly the bug we fixed on MD's precinct layer, which was labeled "2022" when the source had already renamed it "2026")
+3. Add the entry to `LAYERS` in `scripts/load_district_layers.py` with the correct field mapper (each source uses different property names)
+4. Run the script, review the generated SQL, apply in batches (large files hit Supabase's API 413 limit — split into ~1.5MB batches)
 
-### Maryland e DC
+### Maryland and DC
 
-Já cobertos por completo nas camadas carregadas (precincts, delegate subdistricts, wards, ANC, SMD, SBOE). Manutenção = re-rodar `load_district_layers.py` periodicamente (o script já é idempotente) e reconferir nomes oficiais de camada a cada execução, já que agências reeditam sem avisar.
+Already fully covered in the loaded layers (precincts, delegate subdistricts, wards, ANC, SMD, SBOE). Maintenance = periodically re-run `load_district_layers.py` (already idempotent) and re-verify official layer names on each run, since agencies re-publish without notice.
 
-## Frente 2 — Dado eleitoral real (ballot styles, contests, candidatos)
+### 3 districts identified with no geographic layer (2026-07-02 audit)
 
-Este é o gargalo. Não existe API pública estruturada para isso em MD/DC/VA — só PDFs certificados por condado/jurisdição.
+These offices already appear correctly on the ballot (the link is via `precinct → ballot_style`, not dependent on geometry), but don't show a district name/boundary on the map nor allow "Focus on Map":
 
-### Processo repetível (o que foi feito manualmente na tarefa 3, para 1 precinct)
+| District | Source found | Status |
+|---|---|---|
+| Montgomery County Council (1-7) | An official county app exists (`mcgov-gis.maps.arcgis.com`), exact FeatureServer URL not yet confirmed | Pending |
+| Montgomery Board of Education | `opendata-mcgov-gis.hub.arcgis.com/datasets/board-of-education-districts` | Confirmed, still need to extract the FeatureServer URL |
+| Judicial Circuit 6 | No dedicated shapefile found | Low priority — Circuit 6 = all of Montgomery + Frederick, every Montgomery precinct already falls in it without needing its own layer |
 
-1. Achar o PDF do ballot certificado da jurisdição (ex: `elections.maryland.gov/elections/<ano>/primary_ballots/<Condado>.pdf`)
-2. Baixar e extrair texto com `pdftotext -layout`
-3. Localizar a página do ballot style de interesse (buscar pelo código do precinct)
-4. Transcrever contests + candidatos para uma estrutura de dados (como em `scripts/load_montgomery_primary_2026_bs_dem_125.py`)
-5. Gerar e aplicar o SQL
+## Front 2 — Real election data (ballot styles, contests, candidates)
 
-### O que precisa mudar para escalar (não fazer manualmente por precinct)
+This is the bottleneck. There's no structured public API for this in MD/DC/VA — only certified PDFs per county/jurisdiction.
 
-- **Parser sensível a coordenadas** (`pdfplumber`, lendo posição x/y de cada palavra) em vez de `pdftotext -layout`, que embaralha layout de duas colunas — foi por isso que Comitê Central e Board of Education ficaram de fora na tarefa 3
-- **Automatizar a localização do ballot style por precinct dentro do PDF**, em vez de grep manual por código de precinct
-- Montgomery County sozinho tem **125+ ballot styles Democratas** (o código "BS DEM 125" indica isso) — cada um é uma combinação diferente de distritos. Popular todos exige rodar esse parser para cada um, não só transcrever à mão.
-- Repetir para o ballot Republicano (não carregado ainda) e para os outros 23 condados de MD, DC (sample ballots por ward/partido) e VA (por localidade — cada uma publica separado, sem padrão único)
+### Repeatable process (what was done manually in task 3, for 1 precinct)
 
-### Ordem de prioridade recomendada (do relatório de pesquisa original)
+1. Find the jurisdiction's certified ballot PDF (e.g. `elections.maryland.gov/elections/<year>/primary_ballots/<County>.pdf`)
+2. Download and extract text with `pdftotext -layout`
+3. Locate the page for the ballot style of interest (search by precinct code)
+4. Transcribe contests + candidates into a data structure (as in `scripts/load_montgomery_primary_2026_bs_dem_125.py`)
+5. Generate and apply the SQL
 
-1. Maryland + Montgomery County completo (mais fontes oficiais estruturadas, já é o piloto)
-2. Resto de Maryland (mesmo pipeline, outros condados)
-3. DC (sample ballots por ward/partido, vote centers em vez de polling place fixo — modelagem ligeiramente diferente)
-4. Virginia (mais fragmentado — cada localidade com sua própria fonte; lookup completo mais forte só nas eleições estaduais primárias/gerais)
+### What needs to change to scale (not do it manually per precinct)
 
-## Frente 3 — Dados ainda não iniciados
+- **Coordinate-aware parser** (`pdfplumber`, reading each word's x/y position) instead of `pdftotext -layout`, which scrambles two-column layouts — this is why Central Committee and Board of Education were left out in task 3
+- **Automate locating the ballot style by precinct within the PDF**, instead of manual grep by precinct code
+- Montgomery County alone has **125+ Democratic ballot styles** (the "BS DEM 125" code indicates this) — each is a different combination of districts. Populating all of them requires running this parser for each one, not just hand-transcribing.
+- Repeat for the Republican ballot (loaded as of 2026-07-02 for the test precinct, see [mvp-scope.md](mvp-scope.md)) and for the other 23 MD counties, DC (sample ballots by ward/party), and VA (per locality — each publishes separately, no single pattern)
 
-- **`polling_locations` — carregado só parcialmente** (tarefa 6): os 14 early voting centers de Montgomery County (primária 2026), via PDF certificado da MSBE, geocodificados e expostos por `rpc_nearby_polling_locations` (ordenação por distância, não por precinct — early voting em MD é county-wide, não precinct-restrito). **Falta**: local de votação do dia da eleição por precinct (esse é específico por precinct, não county-wide, e não achei fonte estruturada — nem ArcGIS nem PDF simples; o lookup oficial da MSBE é só formulário web, sem API documentada), drop boxes, e early voting de DC/VA. VA/Loudoun já tem `loudoun_polling_places.geojson` disponível via `download_data.py`, nunca carregado.
-- `ballot_measures` (questions/referendos) — schema pronto, zero dado real carregado
-- Eleição geral de novembro/2026 — bloqueada até a MSBE certificar (ver [election-research-notes.md](election-research-notes.md))
+### Recommended priority order (from the original research report)
+
+1. Maryland + Montgomery County complete (most structured official sources, already the pilot)
+2. Rest of Maryland (same pipeline, other counties)
+3. DC (sample ballots by ward/party, vote centers instead of fixed polling place — slightly different modeling)
+4. Virginia (more fragmented — each locality has its own source; full lookup is strongest only for state primary/general elections)
+
+## Front 3 — Data not started yet
+
+- **`polling_locations` — only partially loaded** (task 6): Montgomery County's 14 early voting centers (2026 primary), via the MSBE certified PDF. **Update (2026-07-02)**: found the structured source that was missing — Montgomery County has its own ArcGIS elections service (`gis3.montgomerycountymd.gov/arcgis/rest/services/elections`) with `polling_place` (election-day location **per precinct**, `District_P` field in "01-01" format already compatible with our `precinct_code`) and `drop_boxes`, neither loaded yet. This replaces the earlier assumption that no structured source existed. VA/Loudoun already has `loudoun_polling_places.geojson` available via `download_data.py`, never loaded. DC not researched yet.
+- `ballot_measures` (questions/referendums) — schema ready, zero real data loaded
+- November 2026 general election — blocked until the MSBE certifies it (see [election-research-notes.md](election-research-notes.md))
+
+## Multi-party candidates completed for the test precinct (2026-07-02)
+
+Loaded the full Republican ballot (`BS REP 125`, 13 contests) for precinct 008-006, merging automatically with the Democratic contests already loaded — no schema change needed, since `contests` was already party-agnostic. Also handled judicial cross-filing (5 Circuit Court judges appearing on both party ballots) with a dedicated `'Cross-filed'` party value. See [mvp-scope.md](mvp-scope.md) for details. Geographic layers (Montgomery County Council, Board of Education) and the remaining 770 ballot styles in the county are still pending, awaiting a scope decision.

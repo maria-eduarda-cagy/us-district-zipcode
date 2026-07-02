@@ -1,57 +1,58 @@
-# Arquitetura de dados
+# Data architecture
 
-Última atualização: 2026-07-02.
+Last updated: 2026-07-02.
 
-## Visão geral do pipeline
+## Pipeline overview
 
 ```
-Endereço → Geocoding (Census → ArcGIS fallback) → PostGIS overlay (rpc_district_lookup)
+Address → Geocoding (Census → ArcGIS fallback) → PostGIS overlay (rpc_district_lookup)
   → District stack (CD, SLDU, SLDL, county, place, unsd, precinct, delegate subdistrict, ward, ANC, SMD...)
   → precinct → ballot_style → contests → candidates / measures
-  → Resposta unificada: offices + measures + ballots + eventos eleitorais
+  → Unified response: offices + measures + ballots + election events
 ```
 
-Implementado como Supabase (Postgres + PostGIS) com duas Edge Functions (`search`, `sample-ballot`).
+Implemented as Supabase (Postgres + PostGIS) with two Edge Functions (`search`, `sample-ballot`).
 
-## Bancos de tabelas (duas gerações coexistindo)
+## Table generations (two coexisting)
 
-### Tabelas legadas (já existiam antes deste trabalho, nunca versionadas em migration até 2026-07-02)
+### Legacy tables (predate this work, never versioned in a migration until 2026-07-02)
 
-- `cd119`, `sldu`, `sldl`, `county`, `place`, `unsd` — uma tabela por tipo de camada, colunas `id`/`name`/`geom`, dados TIGER/Line para MD+DC+VA inteiros
-- `layer_metadata` — existe mas está vazia (0 linhas), não é usada de fato
-- `cd119_raw`, `sldu_raw`, etc. — tabelas de staging com todos os atributos originais do TIGER
+- `cd119`, `sldu`, `sldl`, `county`, `place`, `unsd` — one table per layer type, columns `id`/`name`/`geom`, TIGER/Line data for all of MD+DC+VA
+- `layer_metadata` — exists but is empty (0 rows), not actually used
+- `cd119_raw`, `sldu_raw`, etc. — staging tables with all original TIGER attributes
 
-Essas tabelas sustentam a função `rpc_district_lookup` desde antes deste projeto ter migrations. **Não foram tocadas nem migradas** — só foram registradas em `district_layers` (ver abaixo) para permitir que `contests.district_layer_id` referencie `cd119`, `sldu` etc.
+These tables have backed the `rpc_district_lookup` function since before this project had migrations. **They were not touched or migrated** — they were only registered in `district_layers` (see below) so that `contests.district_layer_id` can reference `cd119`, `sldu`, etc.
 
-### Tabelas novas (criadas em 2026-07-02, migrations em `supabase/migrations/`)
+### New tables (created 2026-07-02, migrations in `supabase/migrations/`)
 
-- `district_layers` / `district_boundaries` — registro genérico de camada + geometria, usado para toda camada nova que não é TIGER (precincts de MD, wards/ANC/SMD/SBOE de DC, distritos de supervisor de VA). `rpc_district_lookup` faz `UNION ALL` entre as tabelas legadas e essas novas — ver migration `20260702130000_fix_rpc_district_lookup_legacy_tables.sql`.
-- `elections`, `deadlines` — eleições e prazos
-- `precincts` — precinct como entidade própria (separada de `district_boundaries`, pensada para ligar com `ballot_styles`)
-- `offices`, `contests`, `candidates` — cargo abstrato vs. corrida específica vs. candidato, seguindo a distinção recomendada nos relatórios de pesquisa originais
-- `ballot_styles`, `ballot_style_contests` — estilo de cédula (por eleição + precinct + partido) e quais contests ele contém
-- `ballot_measures`, `ballot_style_measures` — questions/referendos (schema pronto, ainda sem dado real carregado)
-- `polling_locations` — locais de votação (schema pronto, ainda sem dado carregado)
-- `sources` — proveniência: toda linha carregada por script tem `source_url`, `fetched_at`/`effective_date`, para auditoria
+- `district_layers` / `district_boundaries` — generic layer + geometry registry, used for every new non-TIGER layer (MD precincts, DC wards/ANC/SMD/SBOE, VA supervisor districts). `rpc_district_lookup` does a `UNION ALL` between the legacy tables and these new ones — see migration `20260702130000_fix_rpc_district_lookup_legacy_tables.sql`.
+- `elections`, `deadlines` — elections and deadlines
+- `precincts` — precinct as its own entity (separate from `district_boundaries`, designed to link with `ballot_styles`)
+- `offices`, `contests`, `candidates` — abstract office vs. specific race vs. candidate, following the distinction recommended in the original research reports
+- `ballot_styles`, `ballot_style_contests` — ballot style (by election + precinct + party) and which contests it contains
+- `ballot_measures`, `ballot_style_measures` — questions/referendums (schema ready, no real data loaded yet)
+- `polling_locations` — voting locations (schema ready, no data loaded yet)
+- `sources` — provenance: every row loaded by a script has `source_url`, `fetched_at`/`effective_date`, for auditing
 
-Todas as tabelas novas têm RLS habilitado **sem policies** — só a `service_role key` das Edge Functions lê/escreve. A anon key nunca acessa tabela diretamente, só via `rpc_district_lookup` e as Edge Functions.
+All new tables have RLS enabled **with no policies** — only the Edge Functions' `service_role key` can read/write. The anon key never accesses a table directly, only via `rpc_district_lookup` and the Edge Functions.
 
-## Scripts de carga (`scripts/`)
+## Loader scripts (`scripts/`)
 
-- `load_district_layers.py` — busca ao vivo 9 camadas ArcGIS REST (MD precincts/delegate subdistricts, DC wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) e gera SQL idempotente (`ON CONFLICT DO UPDATE`) para `district_layers`/`district_boundaries`. Reutilizável — roda de novo sempre que uma fonte publicar atualização.
-- `load_montgomery_primary_2026_bs_dem_125.py` — **não é reutilizável automaticamente**. Contém os contests/candidatos do ballot BS DEM 125 transcritos manualmente do PDF certificado da MSBE. Serve de modelo/padrão para repetir o processo em outros ballot styles, não de pipeline genérico.
-- `load_md_2026_elections_calendar.py` — popula `elections`/`deadlines` (primária certificada + geral agendada) a partir de datas verificadas em [election-research-notes.md](election-research-notes.md).
-- `load_montgomery_early_voting_2026_primary.py` — geocodifica (Census, fallback ArcGIS) e carrega os 14 early voting centers oficiais de Montgomery County (PDF certificado da MSBE) em `polling_locations`.
+- `load_district_layers.py` — fetches 9 ArcGIS REST layers live (MD precincts/delegate subdistricts, DC wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) and generates idempotent SQL (`ON CONFLICT DO UPDATE`) for `district_layers`/`district_boundaries`. Reusable — safe to re-run whenever a source publishes an update.
+- `load_montgomery_primary_2026_bs_dem_125.py` — **not automatically reusable**. Contains the BS DEM 125 ballot's contests/candidates, manually transcribed from the MSBE certified PDF. Serves as a template/pattern for repeating the process on other ballot styles, not a generic pipeline.
+- `load_md_2026_elections_calendar.py` — populates `elections`/`deadlines` (certified primary + scheduled general) from dates verified in [election-research-notes.md](election-research-notes.md).
+- `load_montgomery_early_voting_2026_primary.py` — geocodes (Census, fallback ArcGIS) and loads Montgomery County's 14 official early voting centers (MSBE certified PDF) into `polling_locations`.
+- `load_montgomery_primary_2026_bs_rep_125.py` — same pattern as the Democratic script, loads the Republican ballot (`BS REP 125`) for the same precinct. Reuses the same `contest_id` for the 10 offices that exist on both ballots (automatic merge, no schema change needed — `contests` is already party-agnostic). Also corrects (`UPDATE`) the `party` of the 5 already-loaded Circuit Court Judge candidates, from `'Democratic'` to `'Cross-filed'` (cross-filing: same candidates on both primary ballots).
 
 ## Edge Functions
 
-- `supabase/functions/search` — endereço → geocode → `rpc_district_lookup` → memberships (todos os distritos que contêm o ponto)
+- `supabase/functions/search` — address → geocode → `rpc_district_lookup` → memberships (every district containing the point)
 - `supabase/functions/sample-ballot` — geocode + memberships +:
-  - `contests`/`measures`/`candidates` reais via embedding PostgREST (`precincts → ballot_styles → ballot_style_contests → contests → offices/district_layers/sources/candidates`), filtrados por `include_downballot`
-  - `polling_locations`: 5 locais mais próximos via RPC `rpc_nearby_polling_locations` (ordenação por `ST_Distance`, não dá para fazer isso só com filtros REST)
-  - `election_events`: todos os `deadlines` + `elections` associados, via embedding PostgREST simples
-  - `ballot_status`: `"loaded"` ou `"not_available"` — nunca inventa dado quando não há ballot_style carregado para o precinct
+  - real `contests`/`measures`/`candidates` via PostgREST embedding (`precincts → ballot_styles → ballot_style_contests → contests → offices/district_layers/sources/candidates`), filtered by `include_downballot`
+  - `polling_locations`: 5 nearest locations via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
+  - `election_events`: all `deadlines` + associated `elections`, via a simple PostgREST embed
+  - `ballot_status`: `"loaded"` or `"not_available"` — never fabricates data when no ballot_style is loaded for the precinct
 
-## Incidente relevante (2026-07-02)
+## Notable incident (2026-07-02)
 
-A primeira migration de `district_layers` recriou `rpc_district_lookup` apontando só para as tabelas novas (vazias), quebrando a busca em produção momentaneamente porque as tabelas legadas com dado real (`cd119` etc.) não eram conhecidas até serem inspecionadas diretamente no banco. Corrigido na mesma sessão com uma migration de hotfix que faz `UNION ALL` entre legado e novo. Lição: **o schema de produção nunca esteve documentado antes deste trabalho** — daí a importância de manter esta pasta `/docs` atualizada.
+The first `district_layers` migration recreated `rpc_district_lookup` pointing only at the new (empty) tables, briefly breaking district search in production because the legacy tables with real data (`cd119` etc.) weren't known about until inspected directly in the database. Fixed in the same session with a hotfix migration that does a `UNION ALL` between legacy and new. Lesson: **the production schema was never documented before this work** — hence the importance of keeping this `/docs` folder up to date.

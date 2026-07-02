@@ -594,6 +594,26 @@ main {
     color: #1e8449;
 }
 
+.candidate-tag.democratic {
+    background-color: #eaf2fb;
+    color: #2874a6;
+}
+
+.candidate-tag.republican {
+    background-color: #fdecea;
+    color: #c0392b;
+}
+
+.candidate-tag.nonpartisan {
+    background-color: #ecf0f1;
+    color: #7f8c8d;
+}
+
+.candidate-tag.cross-filed {
+    background: linear-gradient(90deg, #c0392b, #3498db);
+    color: #ffffff;
+}
+
 .sample-no-candidates {
     font-size: 0.85rem;
     color: #999;

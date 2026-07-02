@@ -7,12 +7,12 @@ let hasActiveSearch = false;
 let clearOnNextPopupClose = false;
 let activeDistrictCardKey = null;
 
-// Valores injetados em tempo de execução via /config.js (gerado a partir de variáveis de ambiente)
+// Values injected at runtime via /config.js (generated from environment variables)
 const SUPABASE_URL = window.__APP_CONFIG__?.SUPABASE_URL;
 const SUPABASE_ANON_KEY = window.__APP_CONFIG__?.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error('Configuração ausente: SUPABASE_URL/SUPABASE_ANON_KEY não foram carregados via /config.js.');
+    console.error('Missing configuration: SUPABASE_URL/SUPABASE_ANON_KEY were not loaded via /config.js.');
 }
 
 // Calculate functions base URL from SUPABASE_URL (as you requested)
@@ -231,6 +231,23 @@ const DISTRICT_COLORS = {
 
 function getDistrictColor(type) {
     return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
+}
+
+function partyTagClass(party) {
+    if (!party) return 'nonpartisan';
+    const p = party.trim().toLowerCase();
+    if (p.startsWith('cross')) return 'cross-filed';
+    if (p.startsWith('dem')) return 'democratic';
+    if (p.startsWith('rep')) return 'republican';
+    return 'nonpartisan';
+}
+
+function partyTagLabel(party) {
+    const cls = partyTagClass(party);
+    if (cls === 'cross-filed') return 'Cross-Filing';
+    if (cls === 'democratic') return 'Democrat';
+    if (cls === 'republican') return 'Republican';
+    return 'Non-Partisan';
 }
 
 async function handleSearch() {
@@ -478,6 +495,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                         <li class="sample-candidate">
                             <span class="candidate-name">${cand.name}</span>
                             <span class="candidate-tags">
+                                <span class="candidate-tag ${partyTagClass(cand.party)}">${partyTagLabel(cand.party)}</span>
                                 ${cand.incumbent ? '<span class="candidate-tag incumbent">Incumbent</span>' : ''}
                                 ${cand.unopposed ? '<span class="candidate-tag unopposed">Unopposed</span>' : ''}
                             </span>
