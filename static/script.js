@@ -7,12 +7,12 @@ let hasActiveSearch = false;
 let clearOnNextPopupClose = false;
 let activeDistrictCardKey = null;
 
-// Valores injetados em tempo de execução via /config.js (gerado a partir de variáveis de ambiente)
+// Values injected at runtime via /config.js (generated from environment variables)
 const SUPABASE_URL = window.__APP_CONFIG__?.SUPABASE_URL;
 const SUPABASE_ANON_KEY = window.__APP_CONFIG__?.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error('Configuração ausente: SUPABASE_URL/SUPABASE_ANON_KEY não foram carregados via /config.js.');
+    console.error('Missing configuration: SUPABASE_URL/SUPABASE_ANON_KEY were not loaded via /config.js.');
 }
 
 // Calculate functions base URL from SUPABASE_URL (as you requested)
