@@ -28,7 +28,7 @@ These tables have backed the `rpc_district_lookup` function since before this pr
 - `district_layers` / `district_boundaries` — generic layer + geometry registry, used for every new non-TIGER layer (MD precincts, DC wards/ANC/SMD/SBOE, VA supervisor districts). `rpc_district_lookup` does a `UNION ALL` between the legacy tables and these new ones — see migration `20260702130000_fix_rpc_district_lookup_legacy_tables.sql`.
 - `elections`, `deadlines` — elections and deadlines
 - `precincts` — precinct as its own entity (separate from `district_boundaries`, designed to link with `ballot_styles`)
-- `offices`, `contests`, `candidates` — abstract office vs. specific race vs. candidate, following the distinction recommended in the original research reports
+- `offices`, `contests`, `candidates` — abstract office vs. specific race vs. candidate, following the distinction recommended in the original research reports. `contests.verification_note` (added `20260702170000_contests_verification_note.sql`) flags a contest whose data conflicts across official sources instead of silently picking one — the frontend renders it as a visible warning; see [dmv-expansion-plan.md](dmv-expansion-plan.md) for the Board of Education example that prompted this.
 - `ballot_styles`, `ballot_style_contests` — ballot style (by election + precinct + party) and which contests it contains
 - `ballot_measures`, `ballot_style_measures` — questions/referendums (schema ready, no real data loaded yet)
 - `polling_locations` — voting locations (schema ready, no data loaded yet)

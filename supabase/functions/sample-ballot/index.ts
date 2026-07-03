@@ -107,6 +107,7 @@ type Contest = {
   nonpartisan: boolean
   retention: boolean
   source_url: string | null
+  verification_note: string | null
   candidates: Candidate[]
 }
 
@@ -128,7 +129,7 @@ type BallotStyleSummary = {
 const BALLOT_SELECT =
   "precinct_id,ballot_styles(ballot_style_id,style_code,party,certification_date,sample_ballot_url," +
   "election:elections(election_id,name,election_type,election_date,status)," +
-  "ballot_style_contests(contests(contest_id,contest_label,vote_for,nonpartisan,retention,district_id,scope," +
+  "ballot_style_contests(contests(contest_id,contest_label,vote_for,nonpartisan,retention,district_id,scope,verification_note," +
   "office:offices(name,level)," +
   "district_layer:district_layers(layer_type,source_url)," +
   "source:sources(source_url)," +
@@ -270,6 +271,7 @@ function shapeContests(ballotStyles: any[], memberships: Membership[], includeDo
         nonpartisan: !!c?.nonpartisan,
         retention: !!c?.retention,
         source_url: c?.source?.source_url ?? c?.district_layer?.source_url ?? null,
+        verification_note: c?.verification_note ?? null,
         candidates,
       })
     }

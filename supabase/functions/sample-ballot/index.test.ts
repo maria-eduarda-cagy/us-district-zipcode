@@ -121,6 +121,7 @@ Deno.test("sample-ballot: precinct with a loaded ballot style returns real conte
                 // map/name purposes) -- regression test for a scope inversion bug
                 // where scope was inferred from district_id instead of read from the DB.
                 scope: "at_large",
+                verification_note: "Conflicts with the county's own precinct-to-district crosswalk; not resolved.",
                 office: { name: "County Executive", level: "Local" },
                 district_layer: { layer_type: "COUNTY", source_url: null },
                 source: { source_url: "https://elections.maryland.gov/elections/2026/primary_ballots/Montgomery.pdf" },
@@ -153,6 +154,7 @@ Deno.test("sample-ballot: precinct with a loaded ballot style returns real conte
   assertEquals(bodyWithoutDownballot.contests[0].district_name, "Congressional District 8")
   assertEquals(bodyWithoutDownballot.contests[0].source_url, "https://elections.maryland.gov/elections/2026/primary_ballots/Montgomery.pdf")
   assertEquals(bodyWithoutDownballot.contests[0].scope, "district")
+  assertEquals(bodyWithoutDownballot.contests[0].verification_note, null)
   assertEquals(bodyWithoutDownballot.ballot_styles[0].style_code, "BS DEM 125")
 
   const respWithDownballot = await handleRequest(
@@ -168,6 +170,7 @@ Deno.test("sample-ballot: precinct with a loaded ballot style returns real conte
   assertEquals(bodyWithDownballot.contests[1].candidates[0].name, "Marc Elrich")
   assertEquals(bodyWithDownballot.contests[1].scope, "at_large")
   assertEquals(bodyWithDownballot.contests[1].district_id, "24031")
+  assertEquals(bodyWithDownballot.contests[1].verification_note, "Conflicts with the county's own precinct-to-district crosswalk; not resolved.")
 })
 
 Deno.test("sample-ballot: merges candidates from multiple parties into one contest when ballot styles share a contest_id", async () => {

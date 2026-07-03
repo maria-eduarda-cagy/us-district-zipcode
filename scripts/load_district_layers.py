@@ -1,6 +1,7 @@
 """ETL: pulls supplemental election-boundary layers (MD precincts/delegate
-subdistricts, DC wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) from their official
-ArcGIS REST services and generates SQL to load them into the
+subdistricts/Montgomery County Council/Montgomery Board of Education, DC
+wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) from their official ArcGIS REST
+services and generates SQL to load them into the
 district_layers/district_boundaries tables created by the
 20260702120000_district_layers_and_lookup migration.
 
@@ -36,11 +37,15 @@ def fetch_features(base_url: str) -> list:
             "resultRecordCount": str(PAGE_SIZE),
         }
         url = f"{base_url}/query?{urllib.parse.urlencode(params)}"
+        # Some county ArcGIS servers (e.g. gis.montgomerycountymd.gov) return
+        # 403 for the default "Python-urllib/x.y" user agent -- a generic
+        # browser-like one gets through fine.
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         last_error = None
         data = None
         for attempt in range(4):
             try:
-                with urllib.request.urlopen(url, timeout=60) as resp:
+                with urllib.request.urlopen(request, timeout=60) as resp:
                     data = json.load(resp)
                 break
             except (urllib.error.URLError, TimeoutError) as e:
@@ -113,6 +118,16 @@ def va_loudoun_precinct(props):
     number = str(props.get("PR_NUMBER"))
     name = str(props.get("PR_NAME", "")).title()
     return number, name
+
+
+def md_montgomery_council_district(props):
+    number = str(props.get("COUNCIL"))
+    return number, f"Council District {number}"
+
+
+def md_montgomery_board_of_education_district(props):
+    number = str(props.get("BDED"))
+    return number, f"Board of Education District {number}"
 
 
 # Year suffixes below match each source agency's own layer name (verified
@@ -203,6 +218,24 @@ LAYERS = [
         "jurisdiction": "Loudoun County, VA",
         "url": "https://logis.loudoun.gov/gis/rest/services/COL/ElectionDistricts/MapServer/3",
         "mapper": va_loudoun_precinct,
+    },
+    {
+        "layer_id": "md_montgomery_council_districts",
+        "layer_type": "COUNCIL_DISTRICT",
+        "name": "Montgomery County Council Districts",
+        "state": "MD",
+        "jurisdiction": "Montgomery County, MD",
+        "url": "https://gis.montgomerycountymd.gov/arcgis/rest/services/elections/council_7_districts_maponly/MapServer/0",
+        "mapper": md_montgomery_council_district,
+    },
+    {
+        "layer_id": "md_montgomery_board_of_education_districts",
+        "layer_type": "BOE_DISTRICT",
+        "name": "Montgomery County Board of Education Districts",
+        "state": "MD",
+        "jurisdiction": "Montgomery County, MD",
+        "url": "https://gis4.montgomerycountymd.gov/arcgis/rest/services/elections/board_of_ed/FeatureServer/0",
+        "mapper": md_montgomery_board_of_education_district,
     },
 ]
 

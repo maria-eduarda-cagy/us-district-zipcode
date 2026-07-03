@@ -1,6 +1,10 @@
 # MVP scope
 
-Last updated: 2026-07-02 (multi-party candidates: precinct 008-006 now has Democratic + Republican + party tags in the frontend).
+Last updated: 2026-07-02 (County Council + Board of Education district layers loaded; a real data conflict was found and flagged, not silently resolved — see [dmv-expansion-plan.md](dmv-expansion-plan.md)).
+
+## County Council and Board of Education district layers (2026-07-02)
+
+Loaded both previously-missing Montgomery County layers (`md_montgomery_council_districts`, `md_montgomery_board_of_education_districts`) via `scripts/load_district_layers.py`. County Council checks out cleanly (Ashton = District 7 on the ballot and in the geometry). Board of Education does not: the certified ballot says District 3 for this precinct, but the county's own boundary layer and two other official PDFs all say District 5. Rather than pick a side, that contest is flagged with a new `contests.verification_note` column and shows a visible warning in the UI instead of a district link. Full writeup in [dmv-expansion-plan.md](dmv-expansion-plan.md).
 
 ## Multi-party candidates + colored tags (2026-07-02)
 
