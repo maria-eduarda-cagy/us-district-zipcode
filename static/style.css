@@ -352,6 +352,42 @@ main {
     font-size: 1.4rem;
 }
 
+.districts-section {
+    margin-top: 2rem;
+}
+
+.districts-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    user-select: none;
+}
+
+.districts-summary::-webkit-details-marker {
+    display: none;
+}
+
+.districts-summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 0.5rem;
+    color: #3498db;
+    transition: transform 0.15s;
+}
+
+.districts-section[open] .districts-summary::before {
+    transform: rotate(90deg);
+}
+
+.districts-summary:hover {
+    color: #3498db;
+}
+
+.districts-section .district-found-card:first-of-type {
+    margin-top: 0.5rem;
+}
+
 .calendar-section {
     margin-bottom: 2.5rem;
 }
@@ -434,6 +470,31 @@ main {
     color: #c0392b;
     margin: 0.3rem 0 1rem 0;
     font-weight: bold;
+}
+
+.verification-warning {
+    background-color: #fdf3e0;
+    border: 1px solid #f0c987;
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+    margin: 0.5rem 0;
+}
+
+.verification-warning-label {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #b8860b;
+    margin-bottom: 0.3rem;
+}
+
+.verification-warning-text {
+    font-size: 0.82rem;
+    color: #6b5220;
+    line-height: 1.4;
+    margin: 0;
 }
 
 .sample-ballot-card {

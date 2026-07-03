@@ -219,6 +219,11 @@ const DISTRICT_COLORS = {
     'COUNTY': '#9b59b6',  // Purple for County
     'PLACE': '#f1c40f',   // Yellow for City/Place
     'SCHOOL': '#e74c3c',  // Red for School Districts
+    'UNSD': '#e74c3c',
+    'DELEGATE_SUBDISTRICT': '#d35400',
+    'PRECINCT': '#607d8b',
+    'COUNCIL_DISTRICT': '#f39c12',
+    'BOE_DISTRICT': '#8e5b3f',
     'DC_WARDS_2022': '#1abc9c',
     'DC_ANC_2023': '#16a085',
     'DC_SMD_2023': '#27ae60',
@@ -231,6 +236,31 @@ const DISTRICT_COLORS = {
 
 function getDistrictColor(type) {
     return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
+}
+
+const DISTRICT_TYPE_LABELS = {
+    'CD': 'Congressional District',
+    'SLDU': 'State Senate District',
+    'SLDL': 'State House District',
+    'COUNTY': 'County',
+    'PLACE': 'City / Place',
+    'UNSD': 'School District',
+    'SCHOOL': 'School District',
+    'DELEGATE_SUBDISTRICT': 'House of Delegates Subdistrict',
+    'PRECINCT': 'Precinct',
+    'COUNCIL_DISTRICT': 'County Council District',
+    'BOE_DISTRICT': 'Board of Education District',
+    'DC_WARDS_2022': 'DC Ward',
+    'DC_ANC_2023': 'DC Advisory Neighborhood Commission',
+    'DC_SMD_2023': 'DC Single-Member District',
+    'DC_SBOE_DISTRICTS': 'DC School Board District',
+    'VA_FAIRFAX_SUPERVISOR_DISTRICTS': 'Fairfax Supervisor District',
+    'VA_LOUDOUN_ELECTION_DISTRICTS_2022': 'Loudoun Election District',
+    'VA_LOUDOUN_PRECINCTS': 'Loudoun Precinct'
+};
+
+function districtTypeLabel(type) {
+    return DISTRICT_TYPE_LABELS[type] || type || 'District';
 }
 
 function partyTagClass(party) {
@@ -348,7 +378,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 
     memberships.forEach(m => {
         const districtTypeKey = m.layer_type || 'default';
-        const districtTypeLabel = m.layer_type || 'Unknown';
+        const typeLabel = districtTypeLabel(districtTypeKey);
         const color = getDistrictColor(districtTypeKey);
 
         if (m.geometry) {
@@ -364,27 +394,11 @@ function updateUI(data, sampleBallot, sampleBallotError) {
 
             const popupName = m.district_name || 'District';
             const popupId = m.district_id ? `<br>ID: ${m.district_id}` : '';
-            layer.bindPopup(`<strong>${popupName}</strong><br>Type: ${districtTypeLabel}${popupId}`);
+            layer.bindPopup(`<strong>${popupName}</strong><br>Type: ${typeLabel}${popupId}`);
 
             if (!typeGroups[districtTypeKey]) {
                 typeGroups[districtTypeKey] = L.layerGroup().addTo(map);
-                const typeLabels = {
-                    'CD': 'Congressional (CD)',
-                    'SLDU': 'State Senate (SLDU)',
-                    'SLDL': 'State House (SLDL)',
-                    'COUNTY': 'County',
-                    'PLACE': 'City/Place',
-                    'UNSD': 'School District',
-                    'SCHOOL': 'School District',
-                    'DC_WARDS_2022': 'DC Wards',
-                    'DC_ANC_2023': 'DC ANCs',
-                    'DC_SMD_2023': 'DC SMDs',
-                    'DC_SBOE_DISTRICTS': 'DC School Board Districts',
-                    'VA_FAIRFAX_SUPERVISOR_DISTRICTS': 'Fairfax Supervisor Districts',
-                    'VA_LOUDOUN_ELECTION_DISTRICTS_2022': 'Loudoun Election Districts',
-                    'VA_LOUDOUN_PRECINCTS': 'Loudoun Precincts'
-                };
-                layerControl.addOverlay(typeGroups[districtTypeKey], typeLabels[districtTypeKey] || districtTypeLabel);
+                layerControl.addOverlay(typeGroups[districtTypeKey], typeLabel);
                 overlays[districtTypeKey] = typeGroups[districtTypeKey];
             }
             typeGroups[districtTypeKey].addLayer(layer);
@@ -395,10 +409,22 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '';
 
-    const districtsTitle = document.createElement('h3');
-    districtsTitle.className = 'section-title';
-    districtsTitle.innerText = 'Districts Found';
-    resultsDiv.appendChild(districtsTitle);
+    renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError);
+    renderDistrictsSection(resultsDiv, memberships);
+    renderElectionEvents(resultsDiv, sampleBallot);
+    renderPollingLocations(resultsDiv, sampleBallot);
+
+    setSearchActive(true);
+}
+
+function renderDistrictsSection(resultsDiv, memberships) {
+    const details = document.createElement('details');
+    details.className = 'districts-section';
+
+    const summary = document.createElement('summary');
+    summary.className = 'section-title districts-summary';
+    summary.innerText = `Districts Found (${memberships.length})`;
+    details.appendChild(summary);
 
     memberships.forEach(m => {
         const card = document.createElement('div');
@@ -408,27 +434,29 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         const jurKey = `${m.layer_type || ''}:${m.district_id || ''}`;
         card.setAttribute('data-jur-key', jurKey);
 
+        const cardTitle = m.district_name || districtTypeLabel(m.layer_type);
         const sourceLink = m.source_url ? `<a href="${m.source_url}" target="_blank" class="sample-source-link">Source</a>` : '';
-        const idLine = m.district_id ? `<p class="jur-name"><strong>${m.district_id}</strong></p>` : '';
-        const nameLine = m.district_name ? `<p class="jur-name">${m.district_name}</p>` : '';
+        const idLine = m.district_id ? `<p class="jur-name">ID: <strong>${m.district_id}</strong></p>` : '';
 
         card.innerHTML = `
             <div class="ballot-item-header">
-                <span class="item-name">${m.layer_type || 'District'}</span>
+                <span class="item-name">${cardTitle}</span>
                 <span class="jur-tag" style="background-color: ${color}">${m.layer_type || 'Unknown'}</span>
             </div>
             ${idLine}
-            ${nameLine}
             <div class="sample-audit">
                 ${sourceLink}
                 ${m.district_id && m.layer_type ? `<span class="view-on-map" onclick="focusJurisdiction('${m.district_id}', '${m.layer_type}')">Focus on Map</span>` : ''}
             </div>
         `;
-        resultsDiv.appendChild(card);
+        details.appendChild(card);
     });
 
+    resultsDiv.appendChild(details);
     updateDistrictCardFocus(activeDistrictCardKey);
+}
 
+function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
     const ballotTitle = document.createElement('h3');
     ballotTitle.className = 'section-title';
     ballotTitle.innerText = 'Offices on Your Ballot';
@@ -439,7 +467,6 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         warn.className = 'sample-ballot-warning';
         warn.innerText = `Ballot unavailable: ${sampleBallotError}`;
         resultsDiv.appendChild(warn);
-        setSearchActive(true);
         return;
     }
 
@@ -503,6 +530,13 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                     `).join('')}</ul>`
                     : '<p class="sample-no-candidates">No candidates loaded for this contest yet.</p>';
 
+                const verificationWarning = contest.verification_note
+                    ? `<div class="verification-warning">
+                        <span class="verification-warning-label">Data conflict — not verified</span>
+                        <p class="verification-warning-text">${contest.verification_note}</p>
+                    </div>`
+                    : '';
+
                 card.innerHTML = `
                     <div class="sample-ballot-header">
                         <span class="sample-office">${contestTitle}</span>
@@ -511,6 +545,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
                             <span class="sample-tag scope">${scopeLabel}</span>
                         </div>
                     </div>
+                    ${verificationWarning}
                     ${contest.office_name && contest.office_name !== contestTitle ? `<p class="sample-office-category">${contest.office_name}</p>` : ''}
                     <p class="sample-vote-for">${voteForLabel}</p>
                     ${candidatesList}
@@ -533,11 +568,6 @@ function updateUI(data, sampleBallot, sampleBallotError) {
         empty.innerText = 'No offices were generated for this address.';
         resultsDiv.appendChild(empty);
     }
-
-    renderElectionEvents(resultsDiv, sampleBallot);
-    renderPollingLocations(resultsDiv, sampleBallot);
-
-    setSearchActive(true);
 }
 
 function formatEventDate(isoString) {

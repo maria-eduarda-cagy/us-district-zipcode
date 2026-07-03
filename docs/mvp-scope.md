@@ -1,6 +1,10 @@
 # MVP scope
 
-Last updated: 2026-07-02 (County Council + Board of Education district layers loaded; a real data conflict was found and flagged, not silently resolved — see [dmv-expansion-plan.md](dmv-expansion-plan.md)).
+Last updated: 2026-07-02 (frontend reordered to lead with the ballot, not the district list — see below).
+
+## Frontend: ballot-first layout (2026-07-02)
+
+With 10 district layers now loaded per address (see below), the "Districts Found" list had grown to the point where a visitor had to scroll past 10 technical cards before reaching the actual candidates. Reordered `static/script.js`'s `updateUI()` so **"Offices on Your Ballot" renders first**, followed by "Districts Found" (now collapsed by default inside a native `<details>` element, since it's reference/audit data, not the primary content), then election events and polling locations. Also fixed a real display bug found during this pass: district cards showed the raw layer type code twice (e.g. "CD" as both the bold title and the badge) instead of a human-readable name — introduced a shared `DISTRICT_TYPE_LABELS` map (`static/script.js`) reused by the district cards, the map's layer-control legend, and (previously missing) friendly names for `DELEGATE_SUBDISTRICT`, `PRECINCT`, `COUNCIL_DISTRICT`, and `BOE_DISTRICT`, which had been showing as raw codes in the legend. The static panel header changed from "District Information" to "Your Results" to match the new content order. No backend/API change — verified 10/10 Deno tests still pass and re-tested both the loaded-ballot case and the DC negative case in the browser.
 
 ## County Council and Board of Education district layers (2026-07-02)
 
