@@ -238,31 +238,6 @@ function getDistrictColor(type) {
     return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
 }
 
-const DISTRICT_TYPE_LABELS = {
-    'CD': 'Congressional District',
-    'SLDU': 'State Senate District',
-    'SLDL': 'State House District',
-    'COUNTY': 'County',
-    'PLACE': 'City / Place',
-    'UNSD': 'School District',
-    'SCHOOL': 'School District',
-    'DELEGATE_SUBDISTRICT': 'House of Delegates Subdistrict',
-    'PRECINCT': 'Precinct',
-    'COUNCIL_DISTRICT': 'County Council District',
-    'BOE_DISTRICT': 'Board of Education District',
-    'DC_WARDS_2022': 'DC Ward',
-    'DC_ANC_2023': 'DC Advisory Neighborhood Commission',
-    'DC_SMD_2023': 'DC Single-Member District',
-    'DC_SBOE_DISTRICTS': 'DC School Board District',
-    'VA_FAIRFAX_SUPERVISOR_DISTRICTS': 'Fairfax Supervisor District',
-    'VA_LOUDOUN_ELECTION_DISTRICTS_2022': 'Loudoun Election District',
-    'VA_LOUDOUN_PRECINCTS': 'Loudoun Precinct'
-};
-
-function districtTypeLabel(type) {
-    return DISTRICT_TYPE_LABELS[type] || type || 'District';
-}
-
 function partyTagClass(party) {
     if (!party) return 'nonpartisan';
     const p = party.trim().toLowerCase();

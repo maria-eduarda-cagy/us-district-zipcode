@@ -244,6 +244,77 @@ Deno.test("sample-ballot: merges candidates from multiple parties into one conte
   assertEquals(body.ballot_styles.length, 2)
 })
 
+Deno.test("sample-ballot: merges candidates from multiple parties into one contest when ballot styles share a contest_id", async () => {
+  const memberships = [
+    { layer_id: "cd119", layer_type: "CD", district_id: "2408", district_name: "Congressional District 8", source_url: null, geojson: "{}" },
+    { layer_id: "md_precincts_2026", layer_type: "PRECINCT", district_id: "2403108-006", district_name: "Montgomery Precinct 08-006", source_url: null, geojson: "{}" },
+  ]
+
+  // PostgREST embeds candidates(...) by contest_id, not by ballot_style -- so every
+  // occurrence of the same contest_id (whichever ballot_style traversal found it)
+  // already returns the FULL, already-combined candidate list. The mock reflects
+  // that: both ballot styles' copies of "contest-cd8" carry the same merged array,
+  // not a split-then-merged one.
+  const mergedCandidates = [
+    { name: "Jamie Raskin", party: "Democratic", unopposed: false, incumbent: true, ballot_order: 3 },
+    { name: "J. D. Kumar", party: "Democratic", unopposed: false, incumbent: false, ballot_order: 1 },
+    { name: "Anita Mpambara Cox", party: "Republican", unopposed: false, incumbent: false, ballot_order: 1 },
+    { name: "Donald L. Lech", party: "Republican", unopposed: false, incumbent: false, ballot_order: 2 },
+  ]
+  const sharedContest = {
+    contest_id: "contest-cd8",
+    contest_label: "Representative in Congress District 8",
+    vote_for: 1,
+    nonpartisan: false,
+    retention: false,
+    district_id: "2408",
+    scope: "district",
+    office: { name: "U.S. Representative", level: "Federal" },
+    district_layer: { layer_type: "CD", source_url: null },
+    source: { source_url: "https://elections.maryland.gov/elections/2026/primary_ballots/Montgomery.pdf" },
+    candidates: mergedCandidates,
+  }
+
+  const precinctRows = [
+    {
+      precinct_id: "precinct-uuid",
+      ballot_styles: [
+        {
+          ballot_style_id: "style-dem",
+          style_code: "BS DEM 125",
+          party: "Democratic",
+          election: { election_id: "election-uuid", name: "2026 Gubernatorial Primary Election", election_type: "primary", election_date: "2026-06-23", status: "certified" },
+          ballot_style_contests: [{ contests: sharedContest }],
+          ballot_style_measures: [],
+        },
+        {
+          ballot_style_id: "style-rep",
+          style_code: "BS REP 125",
+          party: "Republican",
+          election: { election_id: "election-uuid", name: "2026 Gubernatorial Primary Election", election_type: "primary", election_date: "2026-06-23", status: "certified" },
+          ballot_style_contests: [{ contests: sharedContest }],
+          ballot_style_measures: [],
+        },
+      ],
+    },
+  ]
+
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot?include_downballot=false", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, precinctRows),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+
+  const body = await resp.json()
+  assertEquals(body.contests.length, 1)
+  assertEquals(body.contests[0].candidates.length, 4)
+  assertEquals(body.contests[0].candidates.some((c: any) => c.party === "Democratic"), true)
+  assertEquals(body.contests[0].candidates.some((c: any) => c.party === "Republican"), true)
+  assertEquals(body.ballot_styles.length, 2)
+})
+
 Deno.test("sample-ballot: surfaces nearby polling locations and election events", async () => {
   const pollingRows = [
     {

@@ -1,14 +1,6 @@
 # MVP scope
 
-Last updated: 2026-07-02 (frontend reordered to lead with the ballot, not the district list — see below).
-
-## Frontend: ballot-first layout (2026-07-02)
-
-With 10 district layers now loaded per address (see below), the "Districts Found" list had grown to the point where a visitor had to scroll past 10 technical cards before reaching the actual candidates. Reordered `static/script.js`'s `updateUI()` so **"Offices on Your Ballot" renders first**, followed by "Districts Found" (now collapsed by default inside a native `<details>` element, since it's reference/audit data, not the primary content), then election events and polling locations. Also fixed a real display bug found during this pass: district cards showed the raw layer type code twice (e.g. "CD" as both the bold title and the badge) instead of a human-readable name — introduced a shared `DISTRICT_TYPE_LABELS` map (`static/script.js`) reused by the district cards, the map's layer-control legend, and (previously missing) friendly names for `DELEGATE_SUBDISTRICT`, `PRECINCT`, `COUNCIL_DISTRICT`, and `BOE_DISTRICT`, which had been showing as raw codes in the legend. The static panel header changed from "District Information" to "Your Results" to match the new content order. No backend/API change — verified 10/10 Deno tests still pass and re-tested both the loaded-ballot case and the DC negative case in the browser.
-
-## County Council and Board of Education district layers (2026-07-02)
-
-Loaded both previously-missing Montgomery County layers (`md_montgomery_council_districts`, `md_montgomery_board_of_education_districts`) via `scripts/load_district_layers.py`. County Council checks out cleanly (Ashton = District 7 on the ballot and in the geometry). Board of Education does not: the certified ballot says District 3 for this precinct, but the county's own boundary layer and two other official PDFs all say District 5. Rather than pick a side, that contest is flagged with a new `contests.verification_note` column and shows a visible warning in the UI instead of a district link. Full writeup in [dmv-expansion-plan.md](dmv-expansion-plan.md).
+Last updated: 2026-07-02 (multi-party candidates: precinct 008-006 now has Democratic + Republican + party tags in the frontend).
 
 ## Multi-party candidates + colored tags (2026-07-02)
 
