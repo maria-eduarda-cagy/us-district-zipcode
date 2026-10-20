@@ -30,8 +30,9 @@ These tables have backed the `rpc_district_lookup` function since before this pr
 - `precincts` — precinct as its own entity (separate from `district_boundaries`, designed to link with `ballot_styles`)
 - `offices`, `contests`, `candidates` — abstract office vs. specific race vs. candidate, following the distinction recommended in the original research reports
 - `ballot_styles`, `ballot_style_contests` — ballot style (by election + precinct + party) and which contests it contains
-- `ballot_measures`, `ballot_style_measures` — questions/referendums (schema ready, no real data loaded yet)
-- `polling_locations` — voting locations (schema ready, no data loaded yet)
+- `ballot_measures`, `ballot_style_measures` — questions/referendums (3 statewide questions loaded for the 2026 general)
+- `contest_results` — official vote totals per candidate per party primary (migration `20261020120000`); jurisdiction-wide, not per precinct
+- `polling_locations` — voting locations (14 Montgomery early voting centers, for both the primary and the general)
 - `sources` — provenance: every row loaded by a script has `source_url`, `fetched_at`/`effective_date`, for auditing
 
 All new tables have RLS enabled **with no policies** — only the Edge Functions' `service_role key` can read/write. The anon key never accesses a table directly, only via `rpc_district_lookup` and the Edge Functions.
@@ -43,15 +44,19 @@ All new tables have RLS enabled **with no policies** — only the Edge Functions
 - `load_md_2026_elections_calendar.py` — populates `elections`/`deadlines` (certified primary + scheduled general) from dates verified in [election-research-notes.md](election-research-notes.md).
 - `load_montgomery_early_voting_2026_primary.py` — geocodes (Census, fallback ArcGIS) and loads Montgomery County's 14 official early voting centers (MSBE certified PDF) into `polling_locations`.
 - `load_montgomery_primary_2026_bs_rep_125.py` — same pattern as the Democratic script, loads the Republican ballot (`BS REP 125`) for the same precinct. Reuses the same `contest_id` for the 10 offices that exist on both ballots (automatic merge, no schema change needed — `contests` is already party-agnostic). Also corrects (`UPDATE`) the `party` of the 5 already-loaded Circuit Court Judge candidates, from `'Democratic'` to `'Cross-filed'` (cross-filing: same candidates on both primary ballots).
+- `load_montgomery_general_2026_bs_125.py` — same transcription pattern for the general election ballot (`BS 125`, one nonpartisan-party style per precinct) + its 3 statewide ballot questions. Also clears the primary "Board of Education District 3" `verification_note` (district seats are elected countywide, confirmed by the general ballot and the results file).
+- `load_montgomery_primary_2026_results.py` — fetches the MSBE primary results CSVs live and loads `contest_results`. Validates every candidate name against the two primary ballot loaders and aborts on any mismatch; the generated SQL ends with a row-count assertion. Reusable — re-run to refresh.
 
 ## Edge Functions
 
 - `supabase/functions/search` — address → geocode → `rpc_district_lookup` → memberships (every district containing the point)
 - `supabase/functions/sample-ballot` — geocode + memberships +:
   - real `contests`/`measures`/`candidates` via PostgREST embedding (`precincts → ballot_styles → ballot_style_contests → contests → offices/district_layers/sources/candidates`), filtered by `include_downballot`
-  - `polling_locations`: 5 nearest locations via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
+  - `polling_locations`: 5 nearest locations still in use (end date not passed) via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
   - `election_events`: all `deadlines` + associated `elections`, via a simple PostgREST embed
   - `ballot_status`: `"loaded"` or `"not_available"` — never fabricates data when no ballot_style is loaded for the precinct
+  - each contest/measure carries its `election`, so the frontend groups the ballot by election (upcoming first, then past ones with results); candidates carry `results` (votes, % within their party primary, winner)
+  - `data_sources` / `data_last_updated`: provenance and freshness of everything in the response, shown as "Data last updated" in the UI
 
 ## Notable incident (2026-07-02)
 

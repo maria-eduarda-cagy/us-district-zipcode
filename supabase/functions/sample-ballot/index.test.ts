@@ -315,6 +315,99 @@ Deno.test("sample-ballot: merges candidates from multiple parties into one conte
   assertEquals(body.ballot_styles.length, 2)
 })
 
+Deno.test("sample-ballot: attaches election, primary results with per-party percentages, and data freshness", async () => {
+  const memberships = [
+    { layer_id: "md_precincts_2026", layer_type: "PRECINCT", district_id: "2403108-006", district_name: "Montgomery Precinct 08-006", source_url: null, geojson: "{}" },
+  ]
+  const primary = { election_id: "primary-uuid", name: "2026 Gubernatorial Primary Election", election_type: "primary", election_date: "2026-06-23", status: "certified" }
+  const general = { election_id: "general-uuid", name: "2026 General Election", election_type: "general", election_date: "2026-11-03", status: "scheduled" }
+  const ballotSource = { source_type: "certified_ballot_pdf", source_url: "https://example.org/general.pdf", effective_date: "2026-09-03", fetched_at: "2026-10-20T14:00:00+00:00" }
+  const resultsSource = { source_type: "election_results_csv", source_url: "https://example.org/results.csv", effective_date: "2026-07-23", fetched_at: "2026-10-20T14:05:00+00:00" }
+
+  const precinctRows = [
+    {
+      precinct_id: "precinct-uuid",
+      ballot_styles: [
+        {
+          ballot_style_id: "style-primary",
+          style_code: "BS DEM 125",
+          party: "Democratic",
+          election: primary,
+          source: { ...ballotSource, source_url: "https://example.org/primary.pdf", fetched_at: "2026-07-02T17:32:20+00:00" },
+          ballot_style_contests: [
+            {
+              contests: {
+                contest_id: "contest-judge",
+                contest_label: "Judge of the Circuit Court Circuit 6",
+                vote_for: 4,
+                nonpartisan: false,
+                retention: false,
+                district_id: null,
+                scope: "at_large",
+                office: { name: "Judge of the Circuit Court", level: "State" },
+                district_layer: null,
+                source: null,
+                candidates: [
+                  {
+                    name: "Judge A", party: "Cross-filed", unopposed: false, incumbent: false, ballot_order: 1,
+                    results: [
+                      { primary_party: "Democratic", reporting_unit: "Montgomery County", votes: 300, is_winner: true, source: resultsSource },
+                      { primary_party: "Republican", reporting_unit: "Montgomery County", votes: 10, is_winner: false, source: resultsSource },
+                    ],
+                  },
+                  {
+                    name: "Judge B", party: "Cross-filed", unopposed: false, incumbent: false, ballot_order: 2,
+                    results: [
+                      { primary_party: "Democratic", reporting_unit: "Montgomery County", votes: 100, is_winner: false, source: resultsSource },
+                      { primary_party: "Republican", reporting_unit: "Montgomery County", votes: 30, is_winner: true, source: resultsSource },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          ballot_style_measures: [],
+        },
+        {
+          ballot_style_id: "style-general",
+          style_code: "BS 125",
+          party: null,
+          election: general,
+          source: ballotSource,
+          ballot_style_contests: [],
+          ballot_style_measures: [
+            { ballot_measures: { measure_id: "q2", title: "Question 2", question_text: null, impact_yes: null, impact_no: null, order_on_ballot: 2 } },
+            { ballot_measures: { measure_id: "q1", title: "Question 1", question_text: null, impact_yes: null, impact_no: null, order_on_ballot: 1 } },
+          ],
+        },
+      ],
+    },
+  ]
+
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, precinctRows),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+
+  const body = await resp.json()
+  const judge = body.contests[0]
+  assertEquals(judge.election.election_type, "primary")
+  assertEquals(judge.candidates[0].results.length, 2)
+  // Percentages are within each party's primary, not across both.
+  assertEquals(judge.candidates[0].results[0].pct, 75)
+  assertEquals(judge.candidates[0].results[1].pct, 25)
+  assertEquals(judge.candidates[1].results[1].is_winner, true)
+  assertEquals(body.measures.length, 2)
+  assertEquals(body.measures[0].title, "Question 1")
+  assertEquals(body.measures[0].election.election_type, "general")
+  assertEquals(body.data_sources.length, 3)
+  assertEquals(body.data_sources[0].source_type, "election_results_csv")
+  assertEquals(body.data_last_updated, "2026-10-20T14:05:00+00:00")
+})
+
 Deno.test("sample-ballot: surfaces nearby polling locations and election events", async () => {
   const pollingRows = [
     {
@@ -328,6 +421,10 @@ Deno.test("sample-ballot: surfaces nearby polling locations and election events"
       start_date: "2026-06-11",
       end_date: "2026-06-18",
       distance_meters: 1627.4,
+      source_type: "early_voting_centers_pdf",
+      source_url: "https://elections.maryland.gov/elections/2026/2026_Early_Voting_Centers-EN.pdf",
+      source_effective_date: "2026-04-23",
+      source_fetched_at: "2026-07-02T18:02:48+00:00",
     },
   ]
   const deadlineRows = [
@@ -354,6 +451,9 @@ Deno.test("sample-ballot: surfaces nearby polling locations and election events"
   assertEquals(body.election_events.length, 1)
   assertEquals(body.election_events[0].deadline_type, "election_day")
   assertEquals(body.election_events[0].election_name, "2026 Gubernatorial Primary Election")
+  assertEquals(body.data_sources.length, 1)
+  assertEquals(body.data_sources[0].source_type, "early_voting_centers_pdf")
+  assertEquals(body.data_last_updated, "2026-07-02T18:02:48+00:00")
 })
 
 Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {

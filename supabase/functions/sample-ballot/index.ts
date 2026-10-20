@@ -91,10 +91,31 @@ type Candidate = {
   unopposed: boolean
   incumbent: boolean
   ballot_order: number | null
+  results: CandidateResult[]
+}
+
+// Official totals for an election that already happened (empty otherwise).
+// pct is within the same party primary of the same contest.
+type CandidateResult = {
+  primary_party: string | null
+  reporting_unit: string
+  votes: number
+  pct: number | null
+  is_winner: boolean
+}
+
+type ElectionRef = { election_id: string; name: string; election_type: string; election_date: string; status: string }
+
+type DataSource = {
+  source_type: string
+  source_url: string
+  effective_date: string | null
+  fetched_at: string
 }
 
 type Contest = {
   contest_id: string
+  election: ElectionRef | null
   office_name: string
   contest_label: string
   jurisdiction_level: JurisdictionLevel
@@ -113,28 +134,34 @@ type Contest = {
 
 type Measure = {
   measure_id: string
+  election: ElectionRef | null
   title: string
   question_text: string | null
   impact_yes: string | null
   impact_no: string | null
+  order_on_ballot: number | null
 }
 
 type BallotStyleSummary = {
   ballot_style_id: string
   style_code: string
   party: string | null
-  election: { election_id: string; name: string; election_type: string; election_date: string; status: string } | null
+  election: ElectionRef | null
 }
+
+const SOURCE_FIELDS = "source_type,source_url,effective_date,fetched_at"
 
 const BALLOT_SELECT =
   "precinct_id,ballot_styles(ballot_style_id,style_code,party,certification_date,sample_ballot_url," +
   "election:elections(election_id,name,election_type,election_date,status)," +
+  `source:sources(${SOURCE_FIELDS}),` +
   "ballot_style_contests(contests(contest_id,contest_label,vote_for,nonpartisan,retention,district_id,scope,verification_note," +
   "office:offices(name,level)," +
   "district_layer:district_layers(layer_type,source_url)," +
   "source:sources(source_url)," +
-  "candidates(name,party,unopposed,incumbent,ballot_order)))," +
-  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no)))"
+  "candidates(name,party,unopposed,incumbent,ballot_order," +
+  `results:contest_results(primary_party,reporting_unit,votes,is_winner,source:sources(${SOURCE_FIELDS}))))),` +
+  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no,order_on_ballot)))"
 
 async function fetchNearbyPollingLocations(
   baseUrl: string,
@@ -161,7 +188,8 @@ async function fetchElectionEvents(baseUrl: string, serviceKey: string, fetchImp
   const url = new URL(`${baseUrl}/rest/v1/deadlines`)
   url.searchParams.set(
     "select",
-    "deadline_type,deadline_at,notes,election:elections(election_id,name,election_type,election_date,status)",
+    "deadline_type,deadline_at,notes,election:elections(election_id,name,election_type,election_date,status)," +
+      `source:sources(${SOURCE_FIELDS})`,
   )
   url.searchParams.set("order", "deadline_at.asc")
 
@@ -224,6 +252,84 @@ async function fetchBallotStylesForPrecinct(
   return rows.flatMap((r: any) => (Array.isArray(r?.ballot_styles) ? r.ballot_styles : []))
 }
 
+function shapeElectionRef(e: any): ElectionRef | null {
+  if (!e) return null
+  return {
+    election_id: e.election_id,
+    name: e.name,
+    election_type: e.election_type,
+    election_date: e.election_date,
+    status: e.status,
+  }
+}
+
+function shapeCandidates(rawCandidates: any[]): Candidate[] {
+  const partyTotals = new Map<string, number>()
+  for (const cand of rawCandidates) {
+    for (const r of Array.isArray(cand?.results) ? cand.results : []) {
+      const key = r?.primary_party ?? ""
+      partyTotals.set(key, (partyTotals.get(key) ?? 0) + (typeof r?.votes === "number" ? r.votes : 0))
+    }
+  }
+
+  return rawCandidates
+    .slice()
+    .sort((a: any, b: any) => (a?.ballot_order ?? 0) - (b?.ballot_order ?? 0))
+    .map((cand: any) => ({
+      name: cand?.name ?? "",
+      party: cand?.party ?? null,
+      unopposed: !!cand?.unopposed,
+      incumbent: !!cand?.incumbent,
+      ballot_order: cand?.ballot_order ?? null,
+      results: (Array.isArray(cand?.results) ? cand.results : []).map((r: any) => {
+        const votes = typeof r?.votes === "number" ? r.votes : 0
+        const total = partyTotals.get(r?.primary_party ?? "") ?? 0
+        return {
+          primary_party: r?.primary_party ?? null,
+          reporting_unit: r?.reporting_unit ?? "",
+          votes,
+          pct: total > 0 ? Math.round((votes / total) * 1000) / 10 : null,
+          is_winner: !!r?.is_winner,
+        }
+      }),
+    }))
+}
+
+// Every source row behind this response (ballots, results, calendar, polling
+// locations), newest fetch first, so the UI can say how fresh the data is.
+function collectDataSources(ballotStyles: any[], deadlineRows: any[], pollingRows: any[]): DataSource[] {
+  const found = new Map<string, DataSource>()
+  const add = (s: any) => {
+    if (!s?.source_url || !s?.fetched_at) return
+    found.set(`${s.source_type}|${s.source_url}`, {
+      source_type: s.source_type ?? "",
+      source_url: s.source_url,
+      effective_date: s.effective_date ?? null,
+      fetched_at: s.fetched_at,
+    })
+  }
+
+  for (const style of ballotStyles) {
+    add(style?.source)
+    for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+      for (const cand of Array.isArray(link?.contests?.candidates) ? link.contests.candidates : []) {
+        for (const r of Array.isArray(cand?.results) ? cand.results : []) add(r?.source)
+      }
+    }
+  }
+  for (const d of deadlineRows) add(d?.source)
+  for (const p of pollingRows) {
+    add({
+      source_type: p?.source_type,
+      source_url: p?.source_url,
+      effective_date: p?.source_effective_date,
+      fetched_at: p?.source_fetched_at,
+    })
+  }
+
+  return Array.from(found.values()).sort((a, b) => Date.parse(b.fetched_at) - Date.parse(a.fetched_at))
+}
+
 function shapeContests(ballotStyles: any[], memberships: Membership[], includeDownballot: boolean): Contest[] {
   const membershipByKey = new Map<string, Membership>()
   for (const m of memberships) {
@@ -244,21 +350,11 @@ function shapeContests(ballotStyles: any[], memberships: Membership[], includeDo
       const districtId = c?.district_id ?? null
       const membership = layerType && districtId ? membershipByKey.get(`${layerType}:${districtId}`) : undefined
 
-      const candidates: Candidate[] = Array.isArray(c?.candidates)
-        ? c.candidates
-            .slice()
-            .sort((a: any, b: any) => (a?.ballot_order ?? 0) - (b?.ballot_order ?? 0))
-            .map((cand: any) => ({
-              name: cand?.name ?? "",
-              party: cand?.party ?? null,
-              unopposed: !!cand?.unopposed,
-              incumbent: !!cand?.incumbent,
-              ballot_order: cand?.ballot_order ?? null,
-            }))
-        : []
+      const candidates = shapeCandidates(Array.isArray(c?.candidates) ? c.candidates : [])
 
       dedup.set(c.contest_id, {
         contest_id: c.contest_id,
+        election: shapeElectionRef(style?.election),
         office_name: c?.office?.name ?? c?.contest_label ?? "Unknown Office",
         contest_label: c?.contest_label ?? c?.office?.name ?? "Unknown Contest",
         jurisdiction_level: level,
@@ -295,14 +391,16 @@ function shapeMeasures(ballotStyles: any[]): Measure[] {
       if (!m?.measure_id) continue
       dedup.set(m.measure_id, {
         measure_id: m.measure_id,
+        election: shapeElectionRef(style?.election),
         title: m?.title ?? "",
         question_text: m?.question_text ?? null,
         impact_yes: m?.impact_yes ?? null,
         impact_no: m?.impact_no ?? null,
+        order_on_ballot: m?.order_on_ballot ?? null,
       })
     }
   }
-  return Array.from(dedup.values())
+  return Array.from(dedup.values()).sort((a, b) => (a.order_on_ballot ?? 0) - (b.order_on_ballot ?? 0))
 }
 
 function shapeBallotStyleSummaries(ballotStyles: any[]): BallotStyleSummary[] {
@@ -310,15 +408,7 @@ function shapeBallotStyleSummaries(ballotStyles: any[]): BallotStyleSummary[] {
     ballot_style_id: s?.ballot_style_id ?? null,
     style_code: s?.style_code ?? null,
     party: s?.party ?? null,
-    election: s?.election
-      ? {
-          election_id: s.election.election_id,
-          name: s.election.name,
-          election_type: s.election.election_type,
-          election_date: s.election.election_date,
-          status: s.election.status,
-        }
-      : null,
+    election: shapeElectionRef(s?.election),
   }))
 }
 
@@ -425,6 +515,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
   const ballot_styles = shapeBallotStyleSummaries(ballotStylesRaw)
   const polling_locations = shapePollingLocations(pollingLocationsRaw)
   const election_events = shapeElectionEvents(electionEventsRaw)
+  const data_sources = collectDataSources(ballotStylesRaw, electionEventsRaw, pollingLocationsRaw)
 
   return jsonResponse({
     lat: geocoded.lat,
@@ -446,6 +537,8 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     measures,
     polling_locations,
     election_events,
+    data_sources,
+    data_last_updated: data_sources.length > 0 ? data_sources[0].fetched_at : null,
     ...(debug ? { debug: { rpc_url: rpcUrl, supabase_url: baseUrl, precinct_code: precinctMembership?.district_id ?? null } } : {}),
   })
 }

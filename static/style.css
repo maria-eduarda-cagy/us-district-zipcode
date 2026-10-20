@@ -712,3 +712,138 @@ main {
     flex-wrap: wrap;
     gap: 0.8rem;
 }
+
+.data-freshness {
+    background-color: #f4f8fb;
+    border: 1px solid #d6e4f0;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+    color: #34495e;
+}
+
+.data-freshness summary {
+    cursor: pointer;
+}
+
+.data-source-list {
+    list-style: none;
+    margin: 0.5rem 0 0 0;
+    padding: 0;
+}
+
+.data-source-list li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    padding: 0.3rem 0;
+    border-top: 1px solid #e5edf4;
+}
+
+.data-source-file {
+    font-size: 0.75rem;
+    color: #95a5a6;
+    flex: 1;
+}
+
+.data-source-dates {
+    width: 100%;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+}
+
+.election-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 1.5rem 0 0.25rem 0;
+    padding: 0.5rem 0.75rem;
+    background-color: #2c3e50;
+    color: #ffffff;
+    border-radius: 6px;
+}
+
+.election-name {
+    font-weight: bold;
+}
+
+.election-date {
+    font-size: 0.85rem;
+    opacity: 0.85;
+}
+
+.election-badge {
+    margin-left: auto;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.election-badge.upcoming {
+    background-color: #27ae60;
+}
+
+.election-badge.past {
+    background-color: #7f8c8d;
+}
+
+.sample-candidate {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.candidate-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.candidate-results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-top: 0.2rem;
+}
+
+.result-line {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: #566573;
+}
+
+.result-party {
+    font-weight: bold;
+}
+
+.results-note {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    margin: 0 0 0.3rem 0;
+}
+
+.candidate-tag.winner {
+    background-color: #eafaf1;
+    color: #1e8449;
+}
+
+.candidate-tag.other-party {
+    background-color: #eafaf0;
+    color: #2e7d32;
+}
+
+.measure-text,
+.measure-impact {
+    font-size: 0.85rem;
+    color: #34495e;
+    line-height: 1.45;
+    margin: 0.4rem 0;
+}

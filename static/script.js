@@ -238,13 +238,38 @@ function getDistrictColor(type) {
     return DISTRICT_COLORS[type] || DISTRICT_COLORS['default'];
 }
 
+const DISTRICT_TYPE_LABELS = {
+    'CD': 'Congressional District',
+    'SLDU': 'State Senate District',
+    'SLDL': 'State House District',
+    'COUNTY': 'County',
+    'PLACE': 'City / Place',
+    'UNSD': 'School District',
+    'SCHOOL': 'School District',
+    'DELEGATE_SUBDISTRICT': 'House of Delegates Subdistrict',
+    'PRECINCT': 'Precinct',
+    'COUNCIL_DISTRICT': 'County Council District',
+    'BOE_DISTRICT': 'Board of Education District',
+    'DC_WARDS_2022': 'DC Ward',
+    'DC_ANC_2023': 'DC Advisory Neighborhood Commission',
+    'DC_SMD_2023': 'DC Single-Member District',
+    'DC_SBOE_DISTRICTS': 'DC School Board District',
+    'VA_FAIRFAX_SUPERVISOR_DISTRICTS': 'Fairfax Supervisor District',
+    'VA_LOUDOUN_ELECTION_DISTRICTS_2022': 'Loudoun Election District',
+    'VA_LOUDOUN_PRECINCTS': 'Loudoun Precinct'
+};
+
+function districtTypeLabel(type) {
+    return DISTRICT_TYPE_LABELS[type] || type || 'District';
+}
+
 function partyTagClass(party) {
     if (!party) return 'nonpartisan';
     const p = party.trim().toLowerCase();
     if (p.startsWith('cross')) return 'cross-filed';
     if (p.startsWith('dem')) return 'democratic';
     if (p.startsWith('rep')) return 'republican';
-    return 'nonpartisan';
+    return 'other-party';
 }
 
 function partyTagLabel(party) {
@@ -252,6 +277,7 @@ function partyTagLabel(party) {
     if (cls === 'cross-filed') return 'Cross-Filing';
     if (cls === 'democratic') return 'Democrat';
     if (cls === 'republican') return 'Republican';
+    if (cls === 'other-party') return party;
     return 'Non-Partisan';
 }
 
@@ -384,6 +410,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '';
 
+    renderDataFreshness(resultsDiv, sampleBallot);
     renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError);
     renderDistrictsSection(resultsDiv, memberships);
     renderElectionEvents(resultsDiv, sampleBallot);
@@ -445,16 +472,28 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
         return;
     }
 
-    if (sampleBallot && Array.isArray(sampleBallot.contests) && sampleBallot.contests.length > 0) {
-        const note = document.createElement('p');
-        note.className = 'sample-ballot-note';
-        note.innerText = sampleBallot.ballot_status === 'loaded'
-            ? 'Candidates and contests from a certified ballot style for this precinct.'
-            : 'Generated from authoritative geocoding + district layers.';
-        resultsDiv.appendChild(note);
+    const contests = Array.isArray(sampleBallot?.contests) ? sampleBallot.contests : [];
+    const measures = Array.isArray(sampleBallot?.measures) ? sampleBallot.measures : [];
+    if (contests.length === 0 && measures.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'sample-ballot-note';
+        empty.innerText = 'No offices were generated for this address.';
+        resultsDiv.appendChild(empty);
+        return;
+    }
+
+    const note = document.createElement('p');
+    note.className = 'sample-ballot-note';
+    note.innerText = sampleBallot.ballot_status === 'loaded'
+        ? 'Candidates and contests from a certified ballot style for this precinct.'
+        : 'Generated from authoritative geocoding + district layers.';
+    resultsDiv.appendChild(note);
+
+    groupByElection(contests, measures).forEach(group => {
+        renderElectionHeader(resultsDiv, group.election);
 
         const levels = { 'Federal': [], 'State': [], 'Local': [] };
-        sampleBallot.contests.forEach(c => {
+        group.contests.forEach(c => {
             if (levels[c.jurisdiction_level]) levels[c.jurisdiction_level].push(c);
         });
 
@@ -464,85 +503,212 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
             levelHeader.className = 'level-header';
             levelHeader.innerText = level;
             resultsDiv.appendChild(levelHeader);
-
-            levels[level].forEach(contest => {
-                const card = document.createElement('div');
-                card.className = 'sample-ballot-card office-ballot-card';
-
-                if (contest.district_layer_type && contest.district_id) {
-                    card.setAttribute('data-jur-key', `${contest.district_layer_type}:${contest.district_id}`);
-                }
-
-                const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
-                const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
-                const contestTitle = contest.contest_label || contest.office_name;
-                const voteForLabel = contest.vote_for > 1 ? `Vote for up to ${contest.vote_for}` : 'Vote for 1';
-
-                const auditLink = contest.source_url
-                    ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
-                    : '';
-                const districtLine = contest.district_name
-                    ? `<p class="sample-district">${contest.district_name}</p>`
-                    : '';
-                const districtIdLine = contest.district_id
-                    ? `<p class="sample-district-id">${contest.district_id}</p>`
-                    : '';
-                const focusLink = (contest.district_id && contest.district_layer_type)
-                    ? `<span class="view-on-map" onclick="focusJurisdiction('${contest.district_id}', '${contest.district_layer_type}')">Focus on Map</span>`
-                    : '';
-
-                const candidates = Array.isArray(contest.candidates) ? contest.candidates : [];
-                const candidatesList = candidates.length > 0
-                    ? `<ul class="sample-candidates">${candidates.map(cand => `
-                        <li class="sample-candidate">
-                            <span class="candidate-name">${cand.name}</span>
-                            <span class="candidate-tags">
-                                <span class="candidate-tag ${partyTagClass(cand.party)}">${partyTagLabel(cand.party)}</span>
-                                ${cand.incumbent ? '<span class="candidate-tag incumbent">Incumbent</span>' : ''}
-                                ${cand.unopposed ? '<span class="candidate-tag unopposed">Unopposed</span>' : ''}
-                            </span>
-                        </li>
-                    `).join('')}</ul>`
-                    : '<p class="sample-no-candidates">No candidates loaded for this contest yet.</p>';
-
-                const verificationWarning = contest.verification_note
-                    ? `<div class="verification-warning">
-                        <span class="verification-warning-label">Data conflict — not verified</span>
-                        <p class="verification-warning-text">${contest.verification_note}</p>
-                    </div>`
-                    : '';
-
-                card.innerHTML = `
-                    <div class="sample-ballot-header">
-                        <span class="sample-office">${contestTitle}</span>
-                        <div class="sample-tags">
-                            <span class="sample-tag level">${contest.jurisdiction_level}</span>
-                            <span class="sample-tag scope">${scopeLabel}</span>
-                        </div>
-                    </div>
-                    ${verificationWarning}
-                    ${contest.office_name && contest.office_name !== contestTitle ? `<p class="sample-office-category">${contest.office_name}</p>` : ''}
-                    <p class="sample-vote-for">${voteForLabel}</p>
-                    ${candidatesList}
-                    ${districtIdLine}
-                    ${districtLine}
-                    <div class="sample-audit">
-                        ${contest.district_layer_type ? `<span class="sample-layer">${contest.district_layer_type}</span>` : ''}
-                        ${rcvLabel ? `<span class="sample-rcv">${rcvLabel}</span>` : ''}
-                        ${auditLink}
-                        ${focusLink}
-                    </div>
-                `;
-                resultsDiv.appendChild(card);
-            });
+            levels[level].forEach(contest => resultsDiv.appendChild(renderContestCard(contest)));
         });
-        updateOfficeCardFocus(activeDistrictCardKey);
-    } else {
-        const empty = document.createElement('p');
-        empty.className = 'sample-ballot-note';
-        empty.innerText = 'No offices were generated for this address.';
-        resultsDiv.appendChild(empty);
+
+        if (group.measures.length > 0) {
+            const measuresHeader = document.createElement('h3');
+            measuresHeader.className = 'level-header';
+            measuresHeader.innerText = 'Ballot Questions';
+            resultsDiv.appendChild(measuresHeader);
+            group.measures.forEach(m => resultsDiv.appendChild(renderMeasureCard(m)));
+        }
+    });
+    updateOfficeCardFocus(activeDistrictCardKey);
+}
+
+function todayIsoDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Upcoming elections first (soonest first), then past ones (most recent first).
+function groupByElection(contests, measures) {
+    const groups = new Map();
+    const groupFor = (election) => {
+        const key = election?.election_id || 'unknown';
+        if (!groups.has(key)) groups.set(key, { election, contests: [], measures: [] });
+        return groups.get(key);
+    };
+    contests.forEach(c => groupFor(c.election).contests.push(c));
+    measures.forEach(m => groupFor(m.election).measures.push(m));
+
+    const today = todayIsoDate();
+    const isUpcoming = (g) => (g.election?.election_date || '') >= today;
+    return Array.from(groups.values()).sort((a, b) => {
+        const ua = isUpcoming(a), ub = isUpcoming(b);
+        if (ua !== ub) return ua ? -1 : 1;
+        const da = a.election?.election_date || '', db = b.election?.election_date || '';
+        return ua ? da.localeCompare(db) : db.localeCompare(da);
+    });
+}
+
+function formatDateOnly(isoDate) {
+    if (!isoDate) return '';
+    // Date-only strings parse as UTC midnight; pin the time so the local day doesn't shift.
+    const date = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+    if (isNaN(date.getTime())) return isoDate;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function renderElectionHeader(resultsDiv, election) {
+    const header = document.createElement('div');
+    header.className = 'election-header';
+    if (!election) {
+        header.innerHTML = '<span class="election-name">Election</span>';
+        resultsDiv.appendChild(header);
+        return;
     }
+    const upcoming = (election.election_date || '') >= todayIsoDate();
+    header.innerHTML = `
+        <span class="election-name">${election.name}</span>
+        <span class="election-date">${formatDateOnly(election.election_date)}</span>
+        <span class="election-badge ${upcoming ? 'upcoming' : 'past'}">${upcoming ? 'Upcoming' : 'Results'}</span>
+    `;
+    resultsDiv.appendChild(header);
+}
+
+function renderCandidateResults(cand) {
+    const results = Array.isArray(cand.results) ? cand.results : [];
+    if (results.length === 0) return '';
+    // Cross-filed candidates have one total per party primary; label which is which.
+    const showParty = results.length > 1;
+    return `<div class="candidate-results">${results.map(r => `
+        <span class="result-line">
+            ${showParty && r.primary_party ? `<span class="result-party">${r.primary_party} primary:</span>` : ''}
+            ${r.votes.toLocaleString()} votes${r.pct !== null ? ` · ${r.pct}%` : ''}
+            ${r.is_winner ? '<span class="candidate-tag winner">Won</span>' : ''}
+        </span>
+    `).join('')}</div>`;
+}
+
+function renderContestCard(contest) {
+    const card = document.createElement('div');
+    card.className = 'sample-ballot-card office-ballot-card';
+
+    if (contest.district_layer_type && contest.district_id) {
+        card.setAttribute('data-jur-key', `${contest.district_layer_type}:${contest.district_id}`);
+    }
+
+    const scopeLabel = contest.scope === 'at_large' ? 'At-large' : 'District';
+    const rcvLabel = contest.ranked_choice_voting ? 'Ranked-choice voting' : '';
+    const contestTitle = contest.contest_label || contest.office_name;
+    const voteForLabel = contest.retention
+        ? 'Vote Yes or No for continuance in office'
+        : contest.vote_for > 1 ? `Vote for up to ${contest.vote_for}` : 'Vote for 1';
+
+    const auditLink = contest.source_url
+        ? `<a href="${contest.source_url}" target="_blank" class="sample-source-link">Source</a>`
+        : '';
+    const districtLine = contest.district_name
+        ? `<p class="sample-district">${contest.district_name}</p>`
+        : '';
+    const districtIdLine = contest.district_id
+        ? `<p class="sample-district-id">${contest.district_id}</p>`
+        : '';
+    const focusLink = (contest.district_id && contest.district_layer_type)
+        ? `<span class="view-on-map" onclick="focusJurisdiction('${contest.district_id}', '${contest.district_layer_type}')">Focus on Map</span>`
+        : '';
+
+    const candidates = Array.isArray(contest.candidates) ? contest.candidates : [];
+    // The ballot prints no party for some partisan-office candidates (e.g. judges
+    // in the general election); show no tag rather than inventing "Non-Partisan".
+    const partyTag = (party) => (!party && !contest.nonpartisan)
+        ? ''
+        : `<span class="candidate-tag ${partyTagClass(party)}">${partyTagLabel(party)}</span>`;
+    const candidatesList = candidates.length > 0
+        ? `<ul class="sample-candidates">${candidates.map(cand => `
+            <li class="sample-candidate">
+                <div class="candidate-main">
+                    <span class="candidate-name">${cand.name}</span>
+                    <span class="candidate-tags">
+                        ${partyTag(cand.party)}
+                        ${cand.incumbent ? '<span class="candidate-tag incumbent">Incumbent</span>' : ''}
+                        ${cand.unopposed ? '<span class="candidate-tag unopposed">Unopposed</span>' : ''}
+                    </span>
+                </div>
+                ${renderCandidateResults(cand)}
+            </li>
+        `).join('')}</ul>`
+        : '<p class="sample-no-candidates">No candidates loaded for this contest yet.</p>';
+
+    const reportingUnit = candidates.flatMap(c => c.results || []).map(r => r.reporting_unit).find(Boolean);
+    const resultsNote = reportingUnit
+        ? `<p class="results-note">Official results, totals for all of ${reportingUnit}</p>`
+        : '';
+
+    const verificationWarning = contest.verification_note
+        ? `<div class="verification-warning">
+            <span class="verification-warning-label">Data conflict — not verified</span>
+            <p class="verification-warning-text">${contest.verification_note}</p>
+        </div>`
+        : '';
+
+    card.innerHTML = `
+        <div class="sample-ballot-header">
+            <span class="sample-office">${contestTitle}</span>
+            <div class="sample-tags">
+                <span class="sample-tag level">${contest.jurisdiction_level}</span>
+                <span class="sample-tag scope">${scopeLabel}</span>
+            </div>
+        </div>
+        ${verificationWarning}
+        ${contest.office_name && contest.office_name !== contestTitle ? `<p class="sample-office-category">${contest.office_name}</p>` : ''}
+        <p class="sample-vote-for">${voteForLabel}</p>
+        ${resultsNote}
+        ${candidatesList}
+        ${districtIdLine}
+        ${districtLine}
+        <div class="sample-audit">
+            ${contest.district_layer_type ? `<span class="sample-layer">${contest.district_layer_type}</span>` : ''}
+            ${rcvLabel ? `<span class="sample-rcv">${rcvLabel}</span>` : ''}
+            ${auditLink}
+            ${focusLink}
+        </div>
+    `;
+    return card;
+}
+
+function renderMeasureCard(measure) {
+    const card = document.createElement('div');
+    card.className = 'sample-ballot-card measure-card';
+    card.innerHTML = `
+        <div class="sample-ballot-header">
+            <span class="sample-office">${measure.title}</span>
+        </div>
+        ${measure.question_text ? `<p class="measure-text">${measure.question_text}</p>` : ''}
+        ${measure.impact_yes ? `<p class="measure-impact">${measure.impact_yes}</p>` : ''}
+        ${measure.impact_no ? `<p class="measure-impact">${measure.impact_no}</p>` : ''}
+    `;
+    return card;
+}
+
+const SOURCE_TYPE_LABELS = {
+    certified_ballot_pdf: 'Certified ballot (PDF)',
+    election_results_csv: 'Official results (CSV)',
+    election_calendar: 'Election calendar',
+    early_voting_centers_pdf: 'Early voting centers (PDF)',
+};
+
+function renderDataFreshness(resultsDiv, sampleBallot) {
+    const sources = Array.isArray(sampleBallot?.data_sources) ? sampleBallot.data_sources : [];
+    if (!sampleBallot?.data_last_updated) return;
+
+    const box = document.createElement('details');
+    box.className = 'data-freshness';
+    box.innerHTML = `
+        <summary>Data last updated: <strong>${formatDateOnly(sampleBallot.data_last_updated)}</strong></summary>
+        <ul class="data-source-list">${sources.map(s => `
+            <li>
+                <a href="${s.source_url}" target="_blank" class="sample-source-link">${SOURCE_TYPE_LABELS[s.source_type] || s.source_type}</a>
+                <span class="data-source-file">${s.source_url.split('/').pop()}</span>
+                <span class="data-source-dates">
+                    ${s.effective_date ? `published ${formatDateOnly(s.effective_date)} · ` : ''}loaded ${formatDateOnly(s.fetched_at)}
+                </span>
+            </li>
+        `).join('')}</ul>
+    `;
+    resultsDiv.appendChild(box);
 }
 
 function formatEventDate(isoString) {
