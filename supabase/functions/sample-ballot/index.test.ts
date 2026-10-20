@@ -380,7 +380,7 @@ Deno.test("sample-ballot: attaches election, primary results with per-party perc
           ballot_style_contests: [],
           ballot_style_measures: [
             { ballot_measures: { measure_id: "q2", title: "Question 2", question_text: null, impact_yes: null, impact_no: null, order_on_ballot: 2 } },
-            { ballot_measures: { measure_id: "q1", title: "Question 1", question_text: null, impact_yes: null, impact_no: null, order_on_ballot: 1 } },
+            { ballot_measures: { measure_id: "q1", title: "Question 1", question_text: null, impact_yes: null, impact_no: null, explanation: "Present law: x", explanation_source_url: "https://example.gov/q1", order_on_ballot: 1 } },
           ],
         },
       ],
@@ -406,6 +406,9 @@ Deno.test("sample-ballot: attaches election, primary results with per-party perc
   assertEquals(body.measures.length, 2)
   assertEquals(body.measures[0].title, "Question 1")
   assertEquals(body.measures[0].election.election_type, "general")
+  assertEquals(body.measures[0].explanation, "Present law: x")
+  assertEquals(body.measures[0].explanation_source_url, "https://example.gov/q1")
+  assertEquals(body.measures[1].explanation, null)
   assertEquals(body.data_sources.length, 3)
   assertEquals(body.data_sources[0].source_type, "election_results_csv")
   assertEquals(body.data_last_updated, "2026-10-20T14:05:00+00:00")
@@ -539,4 +542,57 @@ Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {
   assertEquals(resp.status, 200)
   const body = await resp.json()
   assertEquals(body.address_canonical.source_used, "ArcGIS")
+})
+
+Deno.test("sample-ballot: split precinct keeps only the ballot style matching the address's districts", async () => {
+  const election = { election_id: "va-general", name: "2026 General Election", election_type: "general", election_date: "2026-11-03", status: "scheduled" }
+  const house = {
+    contests: {
+      contest_id: "contest-cd11", contest_label: "Member House of Representatives 11th District", vote_for: 1,
+      nonpartisan: false, retention: false, district_id: "5111", scope: "district",
+      office: { name: "U.S. Representative", level: "Federal" }, district_layer: { layer_type: "CD", source_url: null },
+      source: null, candidates: [],
+    },
+  }
+  const mayor = {
+    contests: {
+      contest_id: "contest-herndon-mayor", contest_label: "Mayor Town of Herndon", vote_for: 1,
+      nonpartisan: true, retention: false, district_id: "5136648", scope: "district",
+      office: { name: "Mayor", level: "Local" }, district_layer: { layer_type: "PLACE", source_url: null },
+      source: null, candidates: [],
+    },
+  }
+  const precinctRows = [{
+    precinct_id: "p",
+    ballot_styles: [
+      { ballot_style_id: "town", style_code: "Herndon Full", party: null, election, ballot_style_contests: [house, mayor], ballot_style_measures: [] },
+      { ballot_style_id: "exception", style_code: "Herndon Town Exception", party: null, election, ballot_style_contests: [house], ballot_style_measures: [] },
+    ],
+  }]
+  const base = [
+    { layer_id: "cd119", layer_type: "CD", district_id: "5111", district_name: "CD 11", source_url: null, geojson: "{}" },
+    { layer_id: "county", layer_type: "COUNTY", district_id: "51059", district_name: "Fairfax County", source_url: null, geojson: "{}" },
+    { layer_id: "va_fairfax_precincts", layer_type: "PRECINCT", district_id: "51059-324", district_name: "Herndon #3", source_url: null, geojson: "{}" },
+  ]
+  const run = async (memberships: any[]) => {
+    const resp = await handleRequest(
+      new Request("http://localhost/sample-ballot?include_downballot=true", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+      {
+        fetch: makeFetch(memberships, precinctRows),
+        envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+      },
+    )
+    return await resp.json()
+  }
+
+  const inTown = await run([...base, { layer_id: "place", layer_type: "PLACE", district_id: "5136648", district_name: "Herndon town", source_url: null, geojson: "{}" }])
+  assertEquals(inTown.ballot_styles.length, 1)
+  assertEquals(inTown.ballot_styles[0].style_code, "Herndon Full")
+  assertEquals(inTown.contests.length, 2)
+
+  const outsideTown = await run(base)
+  assertEquals(outsideTown.ballot_styles.length, 1)
+  assertEquals(outsideTown.ballot_styles[0].style_code, "Herndon Town Exception")
+  assertEquals(outsideTown.contests.length, 1)
+  assertEquals(outsideTown.contests[0].contest_id, "contest-cd11")
 })

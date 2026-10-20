@@ -551,8 +551,7 @@ function groupByElection(contests, measures) {
     contests.forEach(c => groupFor(c.election).contests.push(c));
     measures.forEach(m => groupFor(m.election).measures.push(m));
 
-    const today = todayIsoDate();
-    const isUpcoming = (g) => (g.election?.election_date || '') >= today;
+    const isUpcoming = (g) => isUpcomingElection(g.election);
     return Array.from(groups.values()).sort((a, b) => {
         const ua = isUpcoming(a), ub = isUpcoming(b);
         if (ua !== ub) return ua ? -1 : 1;
@@ -577,13 +576,30 @@ function renderElectionHeader(resultsDiv, election) {
         resultsDiv.appendChild(header);
         return;
     }
-    const upcoming = (election.election_date || '') >= todayIsoDate();
+    const upcoming = isUpcomingElection(election);
+    // Say outright what the group is: contests to vote on, or already-decided results.
+    const explainer = upcoming
+        ? `You will vote on these contests in the ${election.name} on ${formatDateOnly(election.election_date)}.`
+        : `Already decided: official results of the ${election.name}. These are not on your upcoming ballot.`;
     header.innerHTML = `
         <span class="election-name">${election.name}</span>
         <span class="election-date">${formatDateOnly(election.election_date)}</span>
-        <span class="election-badge ${upcoming ? 'upcoming' : 'past'}">${upcoming ? 'Upcoming' : 'Results'}</span>
+        <span class="election-badge ${upcoming ? 'upcoming' : 'past'}">${upcoming ? 'On your ballot' : 'Results'}</span>
+        <p class="election-explainer">${explainer}</p>
     `;
     resultsDiv.appendChild(header);
+}
+
+function isUpcomingElection(election) {
+    return (election?.election_date || '') >= todayIsoDate();
+}
+
+// Short per-card label so a card read on its own still says which election it's from.
+function electionTagLabel(election) {
+    if (!election) return '';
+    const kind = election.election_type === 'primary' ? 'Primary' : election.election_type === 'general' ? 'General' : 'Election';
+    const date = formatDateOnly(election.election_date);
+    return isUpcomingElection(election) ? `${kind} · ${date}` : `${kind} results · ${date}`;
 }
 
 function renderCandidateResults(cand) {
@@ -650,10 +666,14 @@ function renderContestCard(contest) {
         `).join('')}</ul>`
         : '<p class="sample-no-candidates">No candidates loaded for this contest yet.</p>';
 
-    const reportingUnit = candidates.flatMap(c => c.results || []).map(r => r.reporting_unit).find(Boolean);
+    const allResults = candidates.flatMap(c => c.results || []);
+    const reportingUnit = allResults.map(r => r.reporting_unit).find(Boolean);
+    const primaryParties = [...new Set(allResults.map(r => r.primary_party).filter(Boolean))];
+    const primaryLabel = primaryParties.length === 1 ? `${primaryParties[0]} primary · ` : '';
     const resultsNote = reportingUnit
-        ? `<p class="results-note">Official results, totals for all of ${reportingUnit}</p>`
+        ? `<p class="results-note">${primaryLabel}Official results, totals for all of ${reportingUnit}</p>`
         : '';
+    const electionTag = electionTagLabel(contest.election);
 
     const verificationWarning = contest.verification_note
         ? `<div class="verification-warning">
@@ -666,6 +686,7 @@ function renderContestCard(contest) {
         <div class="sample-ballot-header">
             <span class="sample-office">${contestTitle}</span>
             <div class="sample-tags">
+                ${electionTag ? `<span class="sample-tag election ${isUpcomingElection(contest.election) ? 'upcoming' : 'past'}">${electionTag}</span>` : ''}
                 <span class="sample-tag level">${contest.jurisdiction_level}</span>
                 <span class="sample-tag scope">${scopeLabel}</span>
             </div>
@@ -690,13 +711,21 @@ function renderContestCard(contest) {
 function renderMeasureCard(measure) {
     const card = document.createElement('div');
     card.className = 'sample-ballot-card measure-card';
+    const electionTag = electionTagLabel(measure.election);
     card.innerHTML = `
         <div class="sample-ballot-header">
             <span class="sample-office">${measure.title}</span>
+            ${electionTag ? `<div class="sample-tags"><span class="sample-tag election ${isUpcomingElection(measure.election) ? 'upcoming' : 'past'}">${electionTag}</span></div>` : ''}
         </div>
         ${measure.question_text ? `<p class="measure-text">${measure.question_text}</p>` : ''}
         ${measure.impact_yes ? `<p class="measure-impact">${measure.impact_yes}</p>` : ''}
         ${measure.impact_no ? `<p class="measure-impact">${measure.impact_no}</p>` : ''}
+        ${measure.explanation ? `
+        <details class="measure-explanation">
+            <summary>Official explanation</summary>
+            ${measure.explanation.split('\n\n').map((p) => `<p>${p}</p>`).join('')}
+            ${measure.explanation_source_url ? `<a href="${measure.explanation_source_url}" target="_blank" rel="noopener">Source</a>` : ''}
+        </details>` : ''}
     `;
     return card;
 }

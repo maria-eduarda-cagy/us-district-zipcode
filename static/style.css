@@ -545,6 +545,16 @@ main {
     color: white;
 }
 
+.sample-tag.election.upcoming {
+    background-color: #27ae60;
+    color: white;
+}
+
+.sample-tag.election.past {
+    background-color: #7f8c8d;
+    color: white;
+}
+
 .sample-district {
     margin: 0.5rem 0 0.6rem 0;
     font-size: 0.9rem;
@@ -793,6 +803,13 @@ main {
     background-color: #7f8c8d;
 }
 
+.election-explainer {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.9;
+}
+
 .sample-candidate {
     flex-direction: column;
     align-items: stretch;
@@ -838,6 +855,22 @@ main {
 .candidate-tag.other-party {
     background-color: #eafaf0;
     color: #2e7d32;
+}
+
+.measure-explanation {
+    font-size: 0.85rem;
+    color: #34495e;
+    line-height: 1.45;
+    margin: 0.6rem 0 0.2rem 0;
+}
+
+.measure-explanation summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.measure-explanation p {
+    margin: 0.4rem 0;
 }
 
 .measure-text,

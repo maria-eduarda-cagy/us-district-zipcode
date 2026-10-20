@@ -139,6 +139,8 @@ type Measure = {
   question_text: string | null
   impact_yes: string | null
   impact_no: string | null
+  explanation: string | null
+  explanation_source_url: string | null
   order_on_ballot: number | null
 }
 
@@ -161,7 +163,7 @@ const BALLOT_SELECT =
   "source:sources(source_url)," +
   "candidates(name,party,unopposed,incumbent,ballot_order," +
   `results:contest_results(primary_party,reporting_unit,votes,is_winner,source:sources(${SOURCE_FIELDS}))))),` +
-  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no,order_on_ballot)))"
+  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no,explanation,explanation_source_url,order_on_ballot)))"
 
 // The DMV jurisdictions this tool covers, by state FIPS (first 2 digits of
 // the COUNTY membership's GEOID).
@@ -280,6 +282,53 @@ async function fetchBallotStylesForPrecinct(
   const rows = await resp.json()
   if (!Array.isArray(rows)) return []
   return rows.flatMap((r: any) => (Array.isArray(r?.ballot_styles) ? r.ballot_styles : []))
+}
+
+// A split precinct carries several styles for the same election and party
+// (e.g. Fairfax's Pioneer precinct is split between CD 8 and CD 11; Herndon
+// precincts have a town ballot and a "town exception" ballot for voters
+// outside town limits). Keep, per election+party, the style whose district
+// contests all contain the address, preferring the one matching the most
+// districts. If none fully matches (boundary data disagreeing at the edges),
+// fall back to the best partial match rather than showing no ballot.
+function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any[] {
+  const memberKeys = new Set(
+    memberships.filter((m) => m.layer_type && m.district_id).map((m) => `${m.layer_type}:${m.district_id}`),
+  )
+  const groups = new Map<string, any[]>()
+  for (const style of ballotStyles) {
+    const key = `${style?.election?.election_id ?? ""}|${style?.party ?? ""}`
+    groups.set(key, [...(groups.get(key) ?? []), style])
+  }
+
+  const selected: any[] = []
+  for (const styles of groups.values()) {
+    if (styles.length === 1) {
+      selected.push(styles[0])
+      continue
+    }
+    let best: any = null
+    let bestScore = -Infinity
+    for (const style of styles) {
+      let matched = 0
+      let missed = 0
+      for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+        const c = link?.contests
+        const layerType = c?.district_layer?.layer_type
+        if (c?.scope !== "district" || !layerType || !c?.district_id) continue
+        if (memberKeys.has(`${layerType}:${c.district_id}`)) matched++
+        else missed++
+      }
+      // Any miss ranks below every full match.
+      const score = missed > 0 ? matched - 1000 * missed : matched
+      if (score > bestScore) {
+        best = style
+        bestScore = score
+      }
+    }
+    selected.push(best)
+  }
+  return selected
 }
 
 function shapeElectionRef(e: any): ElectionRef | null {
@@ -426,6 +475,8 @@ function shapeMeasures(ballotStyles: any[]): Measure[] {
         question_text: m?.question_text ?? null,
         impact_yes: m?.impact_yes ?? null,
         impact_no: m?.impact_no ?? null,
+        explanation: m?.explanation ?? null,
+        explanation_source_url: m?.explanation_source_url ?? null,
         order_on_ballot: m?.order_on_ballot ?? null,
       })
     }
@@ -533,7 +584,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
 
   const precinctMembership = memberships.find((m) => m.layer_type === "PRECINCT" && m.district_id)
   const area = resolveCoverage(memberships, false)
-  const [ballotStylesRaw, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
+  const [precinctBallotStyles, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
     precinctMembership?.district_id
       ? fetchBallotStylesForPrecinct(baseUrl, serviceKey, fetchImpl, precinctMembership.district_id)
       : Promise.resolve([]),
@@ -542,6 +593,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
       : Promise.resolve([]),
     area.state ? fetchElectionEvents(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve([]),
   ])
+  const ballotStylesRaw = selectBallotStyles(precinctBallotStyles, memberships)
   const coverage = resolveCoverage(memberships, ballotStylesRaw.length > 0)
 
   const contests = shapeContests(ballotStylesRaw, memberships, includeDownballot)

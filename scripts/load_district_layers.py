@@ -108,6 +108,13 @@ def va_fairfax_supervisor(props):
     return props.get("IDENTIFIER"), f"{district} District"
 
 
+def va_fairfax_precinct(props):
+    # County-prefixed (like MD's VTD codes): bare precinct numbers collide
+    # with Loudoun's, and precincts.precinct_code is looked up on its own.
+    number = str(props.get("PREC_IDENT"))
+    return f"51059-{number}", str(props.get("PREC_NAME", "")).title()
+
+
 def va_loudoun_election_district(props):
     number = str(props.get("EL_NUMBER"))
     name = str(props.get("EL_NAME", "")).title()
@@ -200,6 +207,15 @@ LAYERS = [
         "jurisdiction": "Fairfax County, VA",
         "url": "https://www.fairfaxcounty.gov/idrisi/rest/services/Jade/Electoral/MapServer/2",
         "mapper": va_fairfax_supervisor,
+    },
+    {
+        "layer_id": "va_fairfax_precincts",
+        "layer_type": "PRECINCT",
+        "name": "Fairfax County Voting Precincts",
+        "state": "VA",
+        "jurisdiction": "Fairfax County, VA",
+        "url": "https://www.fairfaxcounty.gov/idrisi/rest/services/Jade/Electoral/MapServer/1",
+        "mapper": va_fairfax_precinct,
     },
     {
         "layer_id": "va_loudoun_election_districts_2022",
