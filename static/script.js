@@ -475,10 +475,7 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
     const contests = Array.isArray(sampleBallot?.contests) ? sampleBallot.contests : [];
     const measures = Array.isArray(sampleBallot?.measures) ? sampleBallot.measures : [];
     if (contests.length === 0 && measures.length === 0) {
-        const empty = document.createElement('p');
-        empty.className = 'sample-ballot-note';
-        empty.innerText = 'No offices were generated for this address.';
-        resultsDiv.appendChild(empty);
+        resultsDiv.appendChild(renderCoverageNotice(sampleBallot?.coverage));
         return;
     }
 
@@ -515,6 +512,27 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
         }
     });
     updateOfficeCardFocus(activeDistrictCardKey);
+}
+
+// Explains why there's no ballot instead of implying the address has no races.
+function renderCoverageNotice(coverage) {
+    const notice = document.createElement('div');
+    notice.className = 'coverage-notice';
+    if (coverage?.level === 'districts_only') {
+        const place = coverage.county_name ? `${coverage.county_name}, ${coverage.state}` : coverage.state;
+        notice.innerHTML = `
+            <strong>Ballot not available yet for this precinct (${place}).</strong>
+            <p>The districts below come from official boundary layers, but candidates and contests
+            are only loaded for some precincts so far. Check your official sample ballot with your
+            local board of elections.</p>
+        `;
+    } else {
+        notice.innerHTML = `
+            <strong>This address is outside the area this tool covers.</strong>
+            <p>Coverage is limited to Washington, DC, Maryland and Virginia.</p>
+        `;
+    }
+    return notice;
 }
 
 function todayIsoDate() {

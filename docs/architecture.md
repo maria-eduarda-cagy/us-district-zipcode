@@ -32,7 +32,7 @@ These tables have backed the `rpc_district_lookup` function since before this pr
 - `ballot_styles`, `ballot_style_contests` — ballot style (by election + precinct + party) and which contests it contains
 - `ballot_measures`, `ballot_style_measures` — questions/referendums (3 statewide questions loaded for the 2026 general)
 - `contest_results` — official vote totals per candidate per party primary (migration `20261020120000`); jurisdiction-wide, not per precinct
-- `polling_locations` — voting locations (14 Montgomery early voting centers, for both the primary and the general)
+- `polling_locations` — voting locations, with `county_fips` (early voting in MD is county-restricted): Montgomery's 14 primary centers + all 102 MD general centers
 - `sources` — provenance: every row loaded by a script has `source_url`, `fetched_at`/`effective_date`, for auditing
 
 All new tables have RLS enabled **with no policies** — only the Edge Functions' `service_role key` can read/write. The anon key never accesses a table directly, only via `rpc_district_lookup` and the Edge Functions.
@@ -52,8 +52,9 @@ All new tables have RLS enabled **with no policies** — only the Edge Functions
 - `supabase/functions/search` — address → geocode → `rpc_district_lookup` → memberships (every district containing the point)
 - `supabase/functions/sample-ballot` — geocode + memberships +:
   - real `contests`/`measures`/`candidates` via PostgREST embedding (`precincts → ballot_styles → ballot_style_contests → contests → offices/district_layers/sources/candidates`), filtered by `include_downballot`
-  - `polling_locations`: 5 nearest locations still in use (end date not passed) via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
-  - `election_events`: all `deadlines` + associated `elections`, via a simple PostgREST embed
+  - `polling_locations`: 5 nearest locations in the address's county, still in use (end date not passed), via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
+  - `election_events`: `deadlines` + associated `elections` for the address's state only, via a PostgREST embed
+  - `coverage`: `ballot` / `districts_only` / `outside_coverage`, plus state and county (from the COUNTY membership); the UI explains why there's no ballot instead of showing an empty one
   - `ballot_status`: `"loaded"` or `"not_available"` — never fabricates data when no ballot_style is loaded for the precinct
   - each contest/measure carries its `election`, so the frontend groups the ballot by election (upcoming first, then past ones with results); candidates carry `results` (votes, % within their party primary, winner)
   - `data_sources` / `data_last_updated`: provenance and freshness of everything in the response, shown as "Data last updated" in the UI

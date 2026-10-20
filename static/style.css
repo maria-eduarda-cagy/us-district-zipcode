@@ -847,3 +847,18 @@ main {
     line-height: 1.45;
     margin: 0.4rem 0;
 }
+
+.coverage-notice {
+    background-color: #fdf3e0;
+    border: 1px solid #f0c987;
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    margin: 0.5rem 0 1rem 0;
+    font-size: 0.88rem;
+    color: #6b5220;
+}
+
+.coverage-notice p {
+    margin: 0.3rem 0 0 0;
+    line-height: 1.4;
+}

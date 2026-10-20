@@ -33,9 +33,12 @@ function makeFetch(
   precinctRows: any[] = [],
   pollingRows: any[] = [],
   deadlineRows: any[] = [],
+  requests: { url: string; body: string | null }[] = [],
 ): typeof fetch {
-  return async (input) => {
+  return async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+    const body = (init as any)?.body
+    requests.push({ url, body: typeof body === "string" ? body : null })
     if (url.includes("geocoding.geo.census.gov")) return CENSUS_OK()
     if (url.endsWith("/rest/v1/rpc/rpc_district_lookup")) {
       return new Response(JSON.stringify(memberships), { status: 200 })
@@ -436,15 +439,28 @@ Deno.test("sample-ballot: surfaces nearby polling locations and election events"
     },
   ]
 
+  const memberships = [
+    { layer_id: "county", layer_type: "COUNTY", district_id: "24031", district_name: "Montgomery County", source_url: null, geojson: "{}" },
+  ]
+  const requests: { url: string; body: string | null }[] = []
+
   const resp = await handleRequest(
     new Request("http://localhost/sample-ballot", { method: "POST", body: JSON.stringify({ address: "x" }) }),
     {
-      fetch: makeFetch([], [], pollingRows, deadlineRows),
+      fetch: makeFetch(memberships, [], pollingRows, deadlineRows, requests),
       envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
     },
   )
 
   const body = await resp.json()
+  // Locations restricted to the address's county, calendar to its state.
+  const pollingRequest = requests.find((r) => r.url.endsWith("/rpc/rpc_nearby_polling_locations"))
+  assertEquals(JSON.parse(pollingRequest!.body!).county_fips, "24031")
+  const deadlinesUrl = new URL(requests.find((r) => r.url.includes("/rest/v1/deadlines"))!.url)
+  assertEquals(deadlinesUrl.searchParams.get("election.state"), "eq.MD")
+  assertEquals(body.coverage.level, "districts_only")
+  assertEquals(body.coverage.state, "MD")
+  assertEquals(body.coverage.county_name, "Montgomery County")
   assertEquals(body.polling_locations.length, 1)
   assertEquals(body.polling_locations[0].name, "Sandy Spring Volunteer Fire Department - The Ballroom")
   assertEquals(body.polling_locations[0].distance_meters, 1627)
@@ -454,6 +470,28 @@ Deno.test("sample-ballot: surfaces nearby polling locations and election events"
   assertEquals(body.data_sources.length, 1)
   assertEquals(body.data_sources[0].source_type, "early_voting_centers_pdf")
   assertEquals(body.data_last_updated, "2026-07-02T18:02:48+00:00")
+})
+
+Deno.test("sample-ballot: address outside DC/MD/VA gets no polling locations or calendar", async () => {
+  const memberships = [
+    { layer_id: "county", layer_type: "COUNTY", district_id: "42101", district_name: "Philadelphia County", source_url: null, geojson: "{}" },
+  ]
+  const requests: { url: string; body: string | null }[] = []
+
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, [], [{ name: "should not be used" }], [{ deadline_type: "x" }], requests),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+
+  const body = await resp.json()
+  assertEquals(body.coverage.level, "outside_coverage")
+  assertEquals(body.coverage.state, null)
+  assertEquals(body.polling_locations.length, 0)
+  assertEquals(body.election_events.length, 0)
+  assertEquals(requests.some((r) => r.url.includes("rpc_nearby_polling_locations") || r.url.includes("/deadlines")), false)
 })
 
 Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {

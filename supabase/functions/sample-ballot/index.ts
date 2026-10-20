@@ -163,12 +163,35 @@ const BALLOT_SELECT =
   `results:contest_results(primary_party,reporting_unit,votes,is_winner,source:sources(${SOURCE_FIELDS}))))),` +
   "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no,order_on_ballot)))"
 
+// The DMV jurisdictions this tool covers, by state FIPS (first 2 digits of
+// the COUNTY membership's GEOID).
+const STATE_BY_FIPS: Record<string, string> = { "11": "DC", "24": "MD", "51": "VA" }
+
+type Coverage = {
+  // ballot: certified ballot loaded for this precinct; districts_only: inside
+  // the DMV, but only district boundaries are available; outside_coverage:
+  // not in DC/MD/VA (or no district matched at all).
+  level: "ballot" | "districts_only" | "outside_coverage"
+  state: string | null
+  county_fips: string | null
+  county_name: string | null
+}
+
+function resolveCoverage(memberships: Membership[], hasBallot: boolean): Coverage {
+  const county = memberships.find((m) => m.layer_type === "COUNTY" && m.district_id)
+  const countyFips = county?.district_id ?? null
+  const state = countyFips ? STATE_BY_FIPS[countyFips.slice(0, 2)] ?? null : null
+  const level = !state ? "outside_coverage" : hasBallot ? "ballot" : "districts_only"
+  return { level, state, county_fips: state ? countyFips : null, county_name: state ? county?.district_name ?? null : null }
+}
+
 async function fetchNearbyPollingLocations(
   baseUrl: string,
   serviceKey: string,
   fetchImpl: typeof fetch,
   lon: number,
   lat: number,
+  countyFips: string,
 ): Promise<any[]> {
   const resp = await fetchImpl(`${baseUrl}/rest/v1/rpc/rpc_nearby_polling_locations`, {
     method: "POST",
@@ -177,20 +200,27 @@ async function fetchNearbyPollingLocations(
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
     },
-    body: JSON.stringify({ lon, lat, max_results: 5 }),
+    // Early voting is county-restricted in MD; DC vote centers are city-wide (one county).
+    body: JSON.stringify({ lon, lat, max_results: 5, county_fips: countyFips }),
   })
   if (!resp.ok) return []
   const rows = await resp.json()
   return Array.isArray(rows) ? rows : []
 }
 
-async function fetchElectionEvents(baseUrl: string, serviceKey: string, fetchImpl: typeof fetch): Promise<any[]> {
+async function fetchElectionEvents(
+  baseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch,
+  state: string,
+): Promise<any[]> {
   const url = new URL(`${baseUrl}/rest/v1/deadlines`)
   url.searchParams.set(
     "select",
-    "deadline_type,deadline_at,notes,election:elections(election_id,name,election_type,election_date,status)," +
+    "deadline_type,deadline_at,notes,election:elections!inner(election_id,name,election_type,election_date,status,state)," +
       `source:sources(${SOURCE_FIELDS})`,
   )
+  url.searchParams.set("election.state", `eq.${state}`)
   url.searchParams.set("order", "deadline_at.asc")
 
   const resp = await fetchImpl(url.toString(), {
@@ -502,13 +532,17 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     : []
 
   const precinctMembership = memberships.find((m) => m.layer_type === "PRECINCT" && m.district_id)
+  const area = resolveCoverage(memberships, false)
   const [ballotStylesRaw, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
     precinctMembership?.district_id
       ? fetchBallotStylesForPrecinct(baseUrl, serviceKey, fetchImpl, precinctMembership.district_id)
       : Promise.resolve([]),
-    fetchNearbyPollingLocations(baseUrl, serviceKey, fetchImpl, geocoded.lon, geocoded.lat),
-    fetchElectionEvents(baseUrl, serviceKey, fetchImpl),
+    area.county_fips
+      ? fetchNearbyPollingLocations(baseUrl, serviceKey, fetchImpl, geocoded.lon, geocoded.lat, area.county_fips)
+      : Promise.resolve([]),
+    area.state ? fetchElectionEvents(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve([]),
   ])
+  const coverage = resolveCoverage(memberships, ballotStylesRaw.length > 0)
 
   const contests = shapeContests(ballotStylesRaw, memberships, includeDownballot)
   const measures = shapeMeasures(ballotStylesRaw)
@@ -532,6 +566,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     include_downballot: includeDownballot,
     memberships,
     ballot_status: ballotStylesRaw.length > 0 ? "loaded" : "not_available",
+    coverage,
     ballot_styles,
     contests,
     measures,
