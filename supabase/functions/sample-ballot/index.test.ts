@@ -596,3 +596,36 @@ Deno.test("sample-ballot: split precinct keeps only the ballot style matching th
   assertEquals(outsideTown.contests.length, 1)
   assertEquals(outsideTown.contests[0].contest_id, "contest-cd11")
 })
+
+Deno.test("sample-ballot: split precinct with no layer to tell styles apart keeps every tied style", async () => {
+  const election = { election_id: "md-general", name: "2026 General Election", election_type: "general", election_date: "2026-11-03", status: "scheduled" }
+  const boe = (n: string) => ({
+    contests: {
+      contest_id: `boe-${n}`, contest_label: `Board of Education District ${n}`, vote_for: 1, nonpartisan: true, retention: false,
+      district_id: "24041", scope: "district", office: { name: "Board of Education", level: "Local" },
+      district_layer: { layer_type: "COUNTY", source_url: null }, source: null, candidates: [],
+    },
+  })
+  const precinctRows = [{
+    precinct_id: "p",
+    ballot_styles: [
+      { ballot_style_id: "s1", style_code: "BS 1", party: null, election, ballot_style_contests: [boe("1")], ballot_style_measures: [] },
+      { ballot_style_id: "s2", style_code: "BS 2", party: null, election, ballot_style_contests: [boe("3")], ballot_style_measures: [] },
+      { ballot_style_id: "s3", style_code: "BS 3", party: null, election, ballot_style_contests: [], ballot_style_measures: [] },
+    ],
+  }]
+  const memberships = [
+    { layer_id: "county", layer_type: "COUNTY", district_id: "24041", district_name: "Talbot County", source_url: null, geojson: "{}" },
+    { layer_id: "md_precincts_2026", layer_type: "PRECINCT", district_id: "2404101-001", district_name: "Talbot 01-001", source_url: null, geojson: "{}" },
+  ]
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot?include_downballot=true", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, precinctRows),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+  const body = await resp.json()
+  assertEquals(body.ballot_styles.length, 3)
+  assertEquals(body.contests.length, 2)
+})

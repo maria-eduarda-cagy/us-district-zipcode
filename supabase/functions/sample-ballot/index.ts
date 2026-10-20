@@ -290,7 +290,10 @@ async function fetchBallotStylesForPrecinct(
 // outside town limits). Keep, per election+party, the style whose district
 // contests all contain the address, preferring the one matching the most
 // districts. If none fully matches (boundary data disagreeing at the edges),
-// fall back to the best partial match rather than showing no ballot.
+// fall back to the best partial match rather than showing no ballot. When
+// styles tie because the district that separates them has no boundary layer
+// (e.g. Talbot's Board of Education districts), keep all of them: the voter
+// sees every contest they might have instead of an arbitrary guess.
 function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any[] {
   const memberKeys = new Set(
     memberships.filter((m) => m.layer_type && m.district_id).map((m) => `${m.layer_type}:${m.district_id}`),
@@ -307,7 +310,7 @@ function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any
       selected.push(styles[0])
       continue
     }
-    let best: any = null
+    let best: any[] = []
     let bestScore = -Infinity
     for (const style of styles) {
       let matched = 0
@@ -315,18 +318,22 @@ function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any
       for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
         const c = link?.contests
         const layerType = c?.district_layer?.layer_type
-        if (c?.scope !== "district" || !layerType || !c?.district_id) continue
+        // County-scoped contests (a county's council districts with no
+        // boundary layer of their own) can't tell styles in one precinct apart.
+        if (c?.scope !== "district" || !layerType || layerType === "COUNTY" || !c?.district_id) continue
         if (memberKeys.has(`${layerType}:${c.district_id}`)) matched++
         else missed++
       }
       // Any miss ranks below every full match.
       const score = missed > 0 ? matched - 1000 * missed : matched
       if (score > bestScore) {
-        best = style
+        best = [style]
         bestScore = score
+      } else if (score === bestScore) {
+        best.push(style)
       }
     }
-    selected.push(best)
+    selected.push(...best)
   }
   return selected
 }
