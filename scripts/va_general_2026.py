@@ -28,6 +28,15 @@ FEDERAL_CONTESTS = {
         ("Mark R. Warner", DEM),
         ("Bert Mizusawa", REP),
     ]),
+    # From the Prince William County sample ballots.
+    "house7": ("U.S. Representative", "Federal", "Member House of Representatives 7th District", "cd119", "5107", "district", False, 1, 2, [
+        ("Eugene S. Vindman", DEM),
+        ("Doug A. Ollivant", REP),
+        ("Taner E. Demirci Lopez", LIB),
+        ("Alaha Ahrar", IND),
+        ("Joshua E. Ertle", IND),
+        ("Randall A. Terry", IND),
+    ]),
     "house8": ("U.S. Representative", "Federal", "Member House of Representatives 8th District", "cd119", "5108", "district", False, 1, 2, [
         ("Donald S. Beyer, Jr.", DEM),
         ("Tony A. Sabio", REP),

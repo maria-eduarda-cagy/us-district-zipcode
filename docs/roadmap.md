@@ -15,7 +15,8 @@ Last updated: 2026-10-21. This is the project's current direction; update it whe
 | Maryland (24 jurisdictions) | **Loaded**: 1,991 styles on 1,975 of 2,040 precincts | The 65 without a ballot: 34 zero-voter placeholders (-09x/-999) and 31 stale polygons (below). Primary + results only for Montgomery precinct 008-006 |
 | Fairfax County, VA | **Loaded**: all 266 precincts | Herndon town races, split precinct Pioneer, official measure explanations |
 | Alexandria, VA | **Loaded**: all 32 precincts | One ballot for the city: U.S. Senate, House 8th, 3 amendments |
-| Rest of Northern Virginia | Precincts loaded (ELECT GIS), ballots not yet | Prince William: sample ballots accessible (per precinct). Arlington, Fairfax City, Manassas, Manassas Park, Loudoun: sites block automated access — sample ballots must be downloaded by hand. Falls Church: no sample ballot file found |
+| Prince William, VA | **Loaded**: all 103 precincts | House 7th/10th (Colgan split), House of Delegates District 20 special (5 precincts), 4 towns (Dumfries, Haymarket, Occoquan, Quantico) |
+| Rest of Northern Virginia | Precincts loaded (ELECT GIS), ballots not yet | Arlington, Fairfax City, Manassas, Manassas Park, Loudoun: sites block automated access — sample ballots must be downloaded by hand. Falls Church: no sample ballot file found |
 | DC | Not loaded | Ward/ANC/SMD/SBOE layers loaded; sample ballot source not confirmed (dcboe.org blocks automated access) |
 
 ## Next steps
@@ -31,7 +32,7 @@ Last updated: 2026-10-21. This is the project's current direction; update it whe
 - **Talbot**: 5 split precincts differ only by Board of Education district; with no boundary layer, all possible styles are shown.
 
 ### 2. Finish the DMV
-- Virginia localities beyond Fairfax and Alexandria: precincts are loaded for all of them; ballots need each locality's sample ballots. Prince William next (accessible; needs each precinct's congressional district, 4 towns and the House District 20 special election). The 5 blocked sites need the PDFs downloaded in a browser.
+- Virginia localities beyond Fairfax and Alexandria: precincts are loaded for all of them; ballots need each locality's sample ballots. The 5 blocked sites (Arlington, Fairfax City, Manassas, Manassas Park, Loudoun) need the PDFs downloaded in a browser; Falls Church has no sample ballot file.
 - Virginia calendar: only election day is loaded (registration and early voting deadlines missing).
 - DC: confirm the sample ballot source.
 
@@ -41,6 +42,8 @@ See [public-api-plan.md](public-api-plan.md).
 ## Decision log
 
 ### 2026-10-21
+- **Prince William precincts 706-711 get the standard 7th District ballot although their November sample ballot isn't on the county's page**: they lie 100% in the 7th District with no town or special contest, so the ballot is fully determined (it matches the 54 other plain 7th District precincts). Recorded as an inference, not a transcription.
+- **Town contests are a separate style for the precincts a town lies in** (Prince William's "town residents only" ballots, like Herndon): the `place` layer picks town or non-town by address.
 - **Virginia precincts come from the Department of Elections' per-locality GIS files** (one source, same schema for every locality), except Fairfax County, which keeps the county's own validated layer. Loudoun's old county layer was dropped so an address never gets two precincts; where localities' layers overlap at a border, `sample-ballot` takes the precinct of the address's county.
 - **Contests and amendments shared by every Virginia ballot live in one module** (`va_general_2026.py`), so all localities link to the same rows (refactor verified: Fairfax's generated SQL is byte-identical).
 - **Virginia ballots are validated against ELECT's candidate lists** (Fairfax: 25/25). The lists can't replace the sample ballots: no candidate order, no local questions.
