@@ -1,5 +1,7 @@
 # Plan: from 1 address to the whole DMV
 
+> **Status 2026-10-20 — this page is historical (written 2026-07-02, when the MVP covered one precinct).** The 2026 general ballot is now loaded for every Maryland precinct and all of Fairfax County, VA. Current state, next steps and decisions: [roadmap.md](roadmap.md).
+
 Last updated: 2026-07-02. See current scope in [mvp-scope.md](mvp-scope.md).
 
 Two independent fronts: **geography** (where districts/precincts are) and **election data** (who's running, on which ballot). Geography is solvable with reusable scripts; election data today depends on manual PDF transcription due to the lack of a structured API.

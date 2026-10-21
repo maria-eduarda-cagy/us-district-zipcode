@@ -80,8 +80,19 @@ def md_delegate_subdistrict(props):
     return district, f"House of Delegates Subdistrict {district}"
 
 
+# Election districts that aren't split into precincts are published with no
+# VTD, just the district number as LABEL (13 in Garrett, 4 in Kent). Their
+# ballots number them "<district>-000" in Garrett and "<district>-001" in Kent.
+MD_UNSPLIT_DISTRICT_SUFFIX = {"24023": "000", "24029": "001"}
+
+
 def md_precinct(props):
-    return props.get("VTD"), props.get("NAME")
+    vtd = props.get("VTD")
+    county, label = props.get("COUNTY"), str(props.get("LABEL") or "")
+    if not vtd and county in MD_UNSPLIT_DISTRICT_SUFFIX and label.isdigit():
+        code = f"{int(label):02d}-{MD_UNSPLIT_DISTRICT_SUFFIX[county]}"
+        return f"{county}{code}", f"{props.get('COUNTYNAME')} Precinct {code}"
+    return vtd, props.get("NAME")
 
 
 def dc_ward(props):
@@ -256,6 +267,20 @@ LAYERS = [
 ]
 
 
+# MD `precincts` rows (what ballot styles hang off) mirror the
+# md_precincts_2026 layer's VTDs. Removing a precinct cascades to its ballot
+# styles, so re-run load_md_general_2026.py after a precinct renumbering.
+MD_PRECINCTS_SYNC = (
+    "insert into precincts (precinct_code, precinct_name, county_fips, state, geom)\n"
+    "select district_id, district_name, left(district_id, 5), 'MD', geom from district_boundaries\n"
+    "where layer_id = 'md_precincts_2026' and district_id is not null\n"
+    "on conflict (state, county_fips, precinct_code, effective_from) do update\n"
+    "  set geom = excluded.geom, precinct_name = excluded.precinct_name;\n\n"
+    "delete from precincts p where p.state = 'MD' and not exists (\n"
+    "  select 1 from district_boundaries b where b.layer_id = 'md_precincts_2026' and b.district_id = p.precinct_code);\n\n"
+)
+
+
 def main():
     only = set(sys.argv[1:]) or None
     out = sys.stdout
@@ -289,6 +314,9 @@ def main():
             if not geom:
                 continue
             district_id, district_name = layer["mapper"](props)
+            if not district_id:
+                print(f"  WARNING: skipping a feature with no district id: {district_name}", file=sys.stderr)
+                continue
             geojson_text = json.dumps(geom)
             out.write(
                 "insert into district_boundaries (layer_id, district_id, district_name, geom, source_url)\n"
@@ -300,6 +328,18 @@ def main():
             )
             rows += 1
         print(f"  wrote {rows} insert statements", file=sys.stderr)
+
+        # Drop districts the source no longer publishes (e.g. Howard went from
+        # 118 to 67 precincts in July 2026); left behind they would overlap
+        # the redrawn ones.
+        live_ids = [mapped for mapped in (layer["mapper"](f.get("properties", {}))[0] for f in features if f.get("geometry")) if mapped]
+        if live_ids:
+            out.write(
+                f"delete from district_boundaries where layer_id = {sql_text(layer['layer_id'])}\n"
+                f"  and (district_id is null or district_id <> all (array[{', '.join(sql_text(i) for i in live_ids)}]));\n\n"
+            )
+        if layer["layer_id"] == "md_precincts_2026":
+            out.write(MD_PRECINCTS_SYNC)
 
     print("Done.", file=sys.stderr)
 

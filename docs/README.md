@@ -2,8 +2,10 @@
 
 Index of the `/docs` folder. Whenever there's a decision, research finding, or important process for the project, document it here — not just in conversation.
 
-- [mvp-scope.md](mvp-scope.md) — what the MVP covers today (only the test address) and what's missing
+- [roadmap.md](roadmap.md) / [roadmap.pt-BR.md](roadmap.pt-BR.md) — **start here**: current direction, coverage, next steps and the decision log
+- [public-api-plan.md](public-api-plan.md) / [public-api-plan.pt-BR.md](public-api-plan.pt-BR.md) — future idea: offering the data as a public API (after the DMV is complete)
+- [mvp-scope.md](mvp-scope.md) — historical: the one-precinct MVP (2026-07-02)
 - [architecture.md](architecture.md) — data model, tables, Edge Functions, pipeline
-- [dmv-expansion-plan.md](dmv-expansion-plan.md) — process to scale from 1 address to the whole DMV
+- [dmv-expansion-plan.md](dmv-expansion-plan.md) — historical: the original plan to scale from 1 address to the DMV (2026-07-02)
 - [election-research-notes.md](election-research-notes.md) — election dates, deadlines, real ballot style availability (researched 2026-07-02)
 - [data-sources.md](data-sources.md) — catalog of official sources used, what's already loaded, what's missing
