@@ -587,6 +587,7 @@ Deno.test("sample-ballot: split precinct keeps only the ballot style matching th
 
   const inTown = await run([...base, { layer_id: "place", layer_type: "PLACE", district_id: "5136648", district_name: "Herndon town", source_url: null, geojson: "{}" }])
   assertEquals(inTown.ballot_styles.length, 1)
+  assertEquals(inTown.district_mismatches.length, 0)
   assertEquals(inTown.ballot_styles[0].style_code, "Herndon Full")
   assertEquals(inTown.contests.length, 2)
 
@@ -628,4 +629,45 @@ Deno.test("sample-ballot: split precinct with no layer to tell styles apart keep
   const body = await resp.json()
   assertEquals(body.ballot_styles.length, 3)
   assertEquals(body.contests.length, 2)
+})
+
+Deno.test("sample-ballot: flags ballot district contests that don't contain the address", async () => {
+  const election = { election_id: "md-general", name: "2026 General Election", election_type: "general", election_date: "2026-11-03", status: "scheduled" }
+  const contest = (id: string, label: string, layerType: string, districtId: string, level = "Federal") => ({
+    contests: {
+      contest_id: id, contest_label: label, vote_for: 1, nonpartisan: false, retention: false, district_id: districtId,
+      scope: "district", office: { name: label, level }, district_layer: { layer_type: layerType, source_url: null },
+      source: null, candidates: [],
+    },
+  })
+  const precinctRows = [{
+    precinct_id: "p",
+    ballot_styles: [{
+      ballot_style_id: "s", style_code: "BS 98", party: null, election, ballot_style_measures: [],
+      ballot_style_contests: [
+        contest("cd3", "Representative in Congress District 3", "CD", "2403"),
+        contest("sd32", "State Senator District 32", "SLDU", "24032", "State"),
+        contest("council", "County Council District 4", "COUNTY", "24003", "Local"),
+      ],
+    }],
+  }]
+  // The address's own districts (CD 5, SD 32): the precinct polygon is stale.
+  const memberships = [
+    { layer_id: "cd119", layer_type: "CD", district_id: "2405", district_name: "Congressional District 5", source_url: null, geojson: "{}" },
+    { layer_id: "sldu", layer_type: "SLDU", district_id: "24032", district_name: "State Senate District 32", source_url: null, geojson: "{}" },
+    { layer_id: "county", layer_type: "COUNTY", district_id: "24003", district_name: "Anne Arundel County", source_url: null, geojson: "{}" },
+    { layer_id: "md_precincts_2026", layer_type: "PRECINCT", district_id: "2400304-024", district_name: "AA 04-024", source_url: null, geojson: "{}" },
+  ]
+  const resp = await handleRequest(
+    new Request("http://localhost/sample-ballot?include_downballot=true", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, precinctRows),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+  const body = await resp.json()
+  assertEquals(body.district_mismatches.length, 1)
+  assertEquals(body.district_mismatches[0].contest_label, "Representative in Congress District 3")
+  assertEquals(body.district_mismatches[0].ballot_district_id, "2403")
+  assertEquals(body.district_mismatches[0].address_district_name, "Congressional District 5")
 })

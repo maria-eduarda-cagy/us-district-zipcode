@@ -338,6 +338,46 @@ function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any
   return selected
 }
 
+type DistrictMismatch = {
+  contest_label: string
+  election: ElectionRef | null
+  layer_type: string
+  ballot_district_id: string
+  address_district_id: string | null
+  address_district_name: string | null
+}
+
+// District contests on the selected ballot whose district doesn't contain the
+// address. A precinct polygon older than the ballot (e.g. a precinct created
+// after the boundary layer was published) puts the address in a neighbor's
+// precinct, whose ballot can be for another congressional or legislative
+// district. County-scoped contests carry no boundary of their own and are
+// skipped, as in selectBallotStyles.
+function findDistrictMismatches(ballotStyles: any[], memberships: Membership[]): DistrictMismatch[] {
+  const memberKeys = new Set(
+    memberships.filter((m) => m.layer_type && m.district_id).map((m) => `${m.layer_type}:${m.district_id}`),
+  )
+  const found = new Map<string, DistrictMismatch>()
+  for (const style of ballotStyles) {
+    for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+      const c = link?.contests
+      const layerType = c?.district_layer?.layer_type
+      if (c?.scope !== "district" || !layerType || layerType === "COUNTY" || !c?.district_id) continue
+      if (memberKeys.has(`${layerType}:${c.district_id}`)) continue
+      const addressDistrict = memberships.find((m) => m.layer_type === layerType && m.district_id)
+      found.set(c.contest_id, {
+        contest_label: c?.contest_label ?? "",
+        election: shapeElectionRef(style?.election),
+        layer_type: layerType,
+        ballot_district_id: c.district_id,
+        address_district_id: addressDistrict?.district_id ?? null,
+        address_district_name: addressDistrict?.district_name ?? null,
+      })
+    }
+  }
+  return Array.from(found.values())
+}
+
 function shapeElectionRef(e: any): ElectionRef | null {
   if (!e) return null
   return {
@@ -609,6 +649,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
   const polling_locations = shapePollingLocations(pollingLocationsRaw)
   const election_events = shapeElectionEvents(electionEventsRaw)
   const data_sources = collectDataSources(ballotStylesRaw, electionEventsRaw, pollingLocationsRaw)
+  const district_mismatches = findDistrictMismatches(ballotStylesRaw, memberships)
 
   return jsonResponse({
     lat: geocoded.lat,
@@ -627,6 +668,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     ballot_status: ballotStylesRaw.length > 0 ? "loaded" : "not_available",
     coverage,
     ballot_styles,
+    district_mismatches,
     contests,
     measures,
     polling_locations,

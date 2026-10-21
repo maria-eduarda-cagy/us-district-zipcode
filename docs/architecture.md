@@ -54,6 +54,7 @@ All new tables have RLS enabled **with no policies** — only the Edge Functions
 - `supabase/functions/search` — address → geocode → `rpc_district_lookup` → memberships (every district containing the point)
 - `supabase/functions/sample-ballot` — geocode + memberships +:
   - split precincts: when a precinct has several styles for the same election and party, keeps the one whose district contests all contain the address (most matches wins; best partial match if none is complete). County-scoped contests don't count; when styles still tie (no boundary layer tells them apart, e.g. Talbot's Board of Education districts), all of them are kept
+  - `district_mismatches`: district contests on the selected ballot (with a real boundary layer — not county-scoped) whose district doesn't contain the address. Catches precinct polygons older than the ballot (e.g. Anne Arundel 04-025, created after the boundary data). The UI still shows the ballot, with a notice and a link to the state's official voter lookup
   - real `contests`/`measures`/`candidates` via PostgREST embedding (`precincts → ballot_styles → ballot_style_contests → contests → offices/district_layers/sources/candidates`), filtered by `include_downballot`
   - `polling_locations`: 5 nearest locations in the address's county, still in use (end date not passed), via RPC `rpc_nearby_polling_locations` (ordered by `ST_Distance`, can't be done with REST filters alone)
   - `election_events`: `deadlines` + associated `elections` for the address's state only, via a PostgREST embed

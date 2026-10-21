@@ -486,6 +486,11 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
         : 'Generated from authoritative geocoding + district layers.';
     resultsDiv.appendChild(note);
 
+    const mismatches = Array.isArray(sampleBallot?.district_mismatches) ? sampleBallot.district_mismatches : [];
+    if (mismatches.length > 0) {
+        resultsDiv.appendChild(renderDistrictMismatchNotice(mismatches, sampleBallot?.coverage?.state));
+    }
+
     groupByElection(contests, measures).forEach(group => {
         renderElectionHeader(resultsDiv, group.election);
 
@@ -512,6 +517,33 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
         }
     });
     updateOfficeCardFocus(activeDistrictCardKey);
+}
+
+const OFFICIAL_VOTER_LOOKUP = {
+    MD: 'https://voterservices.elections.maryland.gov/VoterSearch',
+    VA: 'https://vote.elections.virginia.gov/VoterInformation',
+    DC: 'https://www.dcboe.org',
+};
+
+// The precinct's ballot is for a district our maps don't place the address
+// in: usually a precinct boundary that changed after our map data was
+// published. Show the ballot, but say so.
+function renderDistrictMismatchNotice(mismatches, state) {
+    const notice = document.createElement('div');
+    notice.className = 'coverage-notice';
+    const items = mismatches.map(m => {
+        const where = m.address_district_name ? ` (our maps place this address in ${m.address_district_name})` : '';
+        return `<li>${m.contest_label}${where}</li>`;
+    }).join('');
+    const lookup = OFFICIAL_VOTER_LOOKUP[state];
+    notice.innerHTML = `
+        <strong>This ballot may not be the one for this exact address.</strong>
+        <p>Some contests below are for districts that don't include this address on our maps:</p>
+        <ul>${items}</ul>
+        <p>The precinct boundaries we use may be older than this election's. Confirm your ballot
+        ${lookup ? `with the <a href="${lookup}" target="_blank" rel="noopener">official voter lookup</a>.` : 'with your local board of elections.'}</p>
+    `;
+    return notice;
 }
 
 // Explains why there's no ballot instead of implying the address has no races.

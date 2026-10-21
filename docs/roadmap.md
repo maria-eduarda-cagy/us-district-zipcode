@@ -24,7 +24,7 @@ Last updated: 2026-10-21. This is the project's current direction; update it whe
 - ~~Garrett, Kent~~ **fixed 2026-10-21**: their 17 unsplit election districts were in the layer without a VTD; codes are now derived (see decision log).
 - **Polygon/ballot consistency check (2026-10-21)**: for every MD precinct with a ballot, a point inside its polygon falls in the ballot's congressional, senate, delegate and city districts — except Baltimore County 09-008 (59% 42B / 41% 42A in the 2022 delegate layer; the certified ballot says 42B for the whole precinct) and an expected Cumberland split precinct.
 - **Stale polygons** — the state layer is built from county files of 2025, older than some 2026 precinct changes:
-  - **Anne Arundel 04-025** (new precinct, no polygon anywhere — the county's own layer also predates it): its voters fall into a neighbor's polygon whose ballot has a **different congressional/senate district** → they'd see the wrong ballot. Worth a guard in `sample-ballot` (flag a ballot whose district contests don't contain the address).
+  - **Anne Arundel 04-025** (new precinct, no polygon anywhere — the county's own layer also predates it): its voters fall into a neighbor's polygon whose ballot has a **different congressional/senate district**. Mitigated 2026-10-21: `sample-ballot` now flags such ballots (`district_mismatches`) and the UI points to the official voter lookup. A real fix still needs the precinct's polygon.
   - **Calvert 03-002** (no polygon) and **31 precincts in 8 counties** that are in the layer but on no ballot (likely consolidated): those addresses get districts only, no ballot.
   - **Worcester 01-003/01-004** (no polygon): harmless, all four 01-00x ballots are identical.
 - **Talbot**: 5 split precincts differ only by Board of Education district; with no boundary layer, all possible styles are shown.
@@ -40,6 +40,7 @@ See [public-api-plan.md](public-api-plan.md).
 ## Decision log
 
 ### 2026-10-21
+- **A ballot whose district contests don't contain the address is shown with a warning, not hidden** (`district_mismatches`): it's most likely right for the precinct, and the voter is pointed to the state's official lookup. County-scoped contests are not checked (no boundary of their own). Known noise: where TIGER's congressional boundary differs from the official one (slivers of some Fairfax precincts), the warning can appear for a correct ballot. No false warning on the 12 test addresses.
 - **Maryland precincts with no VTD get a derived code**: Garrett's and Kent's unsplit election districts come from the state layer with only a district number; the code follows each county's ballot numbering ("02-000" in Garrett, "02-001" in Kent), checked against the ballots' precinct lists. Features with no code at all are skipped instead of stored with a null id.
 - **Zero-voter placeholder precincts (-098/-099/-999) are expected to have no ballot** (Anne Arundel's own layer shows 0 registered voters for them).
 - **The certified ballot wins over boundary layers** when they disagree (Baltimore County 09-008): the voter gets the precinct's ballot; the district list may still show the layer's district.
