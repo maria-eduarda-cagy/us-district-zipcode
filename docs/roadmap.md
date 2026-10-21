@@ -12,7 +12,7 @@ Last updated: 2026-10-21. This is the project's current direction; update it whe
 
 | Area | 2026 general ballot | Notes |
 |---|---|---|
-| Maryland (24 jurisdictions) | **Loaded**: 1,991 styles on 1,975 of 2,040 precincts | The 65 without a ballot: 34 zero-voter placeholders (-09x/-999) and 31 stale polygons (below). Primary + results only for Montgomery precinct 008-006 |
+| Maryland (24 jurisdictions) | **Loaded**: 1,975 of 2,040 precincts from their own ballots + 13 inferred (1,988) | The 52 without a ballot: 34 MSBE "ghost" precincts (no voters) and 18 polygons of precincts that no longer exist where the ballot can't be inferred (below). Primary + results only for Montgomery precinct 008-006 |
 | Fairfax County, VA | **Loaded**: all 266 precincts | Herndon town races, split precinct Pioneer, official measure explanations |
 | Alexandria, VA | **Loaded**: all 32 precincts | One ballot for the city: U.S. Senate, House 8th, 3 amendments |
 | Prince William, VA | **Loaded**: all 103 precincts | House 7th/10th (Colgan split), House of Delegates District 20 special (5 precincts), 4 towns (Dumfries, Haymarket, Occoquan, Quantico) |
@@ -27,7 +27,7 @@ Last updated: 2026-10-21. This is the project's current direction; update it whe
 - **Polygon/ballot consistency check (2026-10-21)**: for every MD precinct with a ballot, a point inside its polygon falls in the ballot's congressional, senate, delegate and city districts — except Baltimore County 09-008 (59% 42B / 41% 42A in the 2022 delegate layer; the certified ballot says 42B for the whole precinct) and an expected Cumberland split precinct.
 - **Stale polygons** — the state layer is built from county files of 2025, older than some 2026 precinct changes:
   - **Anne Arundel 04-025** (new precinct, no polygon anywhere — the county's own layer also predates it): its voters fall into a neighbor's polygon whose ballot has a **different congressional/senate district**. Mitigated 2026-10-21: `sample-ballot` now flags such ballots (`district_mismatches`) and the UI points to the official voter lookup. A real fix still needs the precinct's polygon.
-  - **Calvert 03-002** (no polygon) and **31 precincts in 8 counties** that are in the layer but on no ballot (likely consolidated): those addresses get districts only, no ballot.
+  - **31 polygons of precincts that no longer exist** (not on MSBE's 2026 precinct list, which matches the ballots: 1,979 precincts + 34 ghosts). **13 now get an inferred ballot** (2026-10-21): Calvert 03-007/03-008 (Dunkirk, Chesapeake Beach — the largest gap; Calvert's new 03-002 has no polygon), Montgomery 05-024/06-018, St. Mary's 02-005/03-007 and 7 in Baltimore City. **18 stay without a ballot** because the inference is ambiguous or impossible: Dorchester 01-002/01-003, Washington 03-005/24-002, St. Mary's 06-005, Baltimore City 11-008/11-009, Carroll 04-008/05-007, Frederick 07-006/20-002/20-003/21-005/21-006/23-003/23-004/26-003 (some are Frederick's 6 ghosts), Montgomery 04-043. A real fix needs current county precinct layers (Calvert's GIS server didn't answer; Anne Arundel's and Montgomery's are as old as the state's).
   - **Worcester 01-003/01-004** (no polygon): harmless, all four 01-00x ballots are identical.
 - **Talbot**: 5 split precincts differ only by Board of Education district; with no boundary layer, all possible styles are shown.
 
@@ -42,6 +42,8 @@ See [public-api-plan.md](public-api-plan.md).
 ## Decision log
 
 ### 2026-10-21
+- **A ballot is inferred for a polygon of a precinct that no longer exists only when it's unambiguous**: every 2026 precinct of the same county election district whose located districts (congress, senate, delegate, city) cover most of the polygon has the very same ballot. The style is marked "(inferred)" and the UI says the ballot comes from the current precincts with the same districts. Otherwise the address keeps "districts only". 13 of 31 inferred.
+- **Talbot's split precincts stay as tied styles**: they split by Board of Education district, and there is no public boundary layer for those districts.
 - **Prince William precincts 706-711 get the standard 7th District ballot although their November sample ballot isn't on the county's page**: they lie 100% in the 7th District with no town or special contest, so the ballot is fully determined (it matches the 54 other plain 7th District precincts). Recorded as an inference, not a transcription.
 - **Town contests are a separate style for the precincts a town lies in** (Prince William's "town residents only" ballots, like Herndon): the `place` layer picks town or non-town by address.
 - **Virginia precincts come from the Department of Elections' per-locality GIS files** (one source, same schema for every locality), except Fairfax County, which keeps the county's own validated layer. Loudoun's old county layer was dropped so an address never gets two precincts; where localities' layers overlap at a border, `sample-ballot` takes the precinct of the address's county.

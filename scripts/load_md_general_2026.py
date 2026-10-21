@@ -86,6 +86,65 @@ STATE_OFFICES = {
 }
 
 
+# The state precinct layer still has 31 polygons of precincts that no longer
+# exist in 2026 (MSBE's precinct list matches the ballots, not the layer), so
+# addresses there would get no ballot. Their voters now vote in some 2026
+# precinct of the same county election district (MD precincts nest in them).
+# When every such precinct whose located districts (congress, senate,
+# delegate, city) cover most of the old polygon has the very same ballot,
+# that ballot is the address's ballot; it gets the representative style's
+# code + " (inferred)". Ambiguous cases (2+ different ballots, or none) and
+# zero-voter "ghost" codes (-09x, -999) stay without a ballot.
+INFER_STALE_PRECINCTS_SQL = """
+create temp table stale_precincts on commit drop as
+select p.precinct_id, p.precinct_code, p.geom, left(p.precinct_code, 8) as ed_prefix
+from precincts p
+where p.state = 'MD' and p.precinct_code !~ '-(09[0-9]|999)$'
+  and not exists (select 1 from ballot_styles b where b.precinct_id = p.precinct_id and b.election_id = '{e}');
+
+create temp table stale_candidates on commit drop as
+select s.precinct_id as stale_id, bs.ballot_style_id, bs.style_code, bs.sample_ballot_url, bs.source_id,
+  (select string_agg(contest_id::text, ',' order by contest_id) from ballot_style_contests x
+   where x.ballot_style_id = bs.ballot_style_id) || '|' ||
+  coalesce((select string_agg(measure_id::text, ',' order by measure_id) from ballot_style_measures x
+            where x.ballot_style_id = bs.ballot_style_id), '') as signature
+from stale_precincts s
+join precincts q on q.state = 'MD' and left(q.precinct_code, 8) = s.ed_prefix and q.precinct_id <> s.precinct_id
+join ballot_styles bs on bs.precinct_id = q.precinct_id and bs.election_id = '{e}'
+where not exists (
+  select 1 from ballot_style_contests x join contests k using (contest_id)
+  where x.ballot_style_id = bs.ballot_style_id and k.scope = 'district'
+    and k.district_layer_id in ('cd119', 'sldu', 'md_delegate_subdistricts_2022', 'place')
+    and coalesce((
+      select st_area(st_intersection(s.geom, st_makevalid(d.geom))::geography) / nullif(st_area(s.geom::geography), 0)
+      from (select geom from cd119 where k.district_layer_id = 'cd119' and id = k.district_id
+            union all select geom from sldu where k.district_layer_id = 'sldu' and id = k.district_id
+            union all select geom from place where k.district_layer_id = 'place' and id = k.district_id
+            union all select geom from district_boundaries
+                      where layer_id = k.district_layer_id and district_id = k.district_id) d
+    ), 0) < 0.5);
+
+create temp table inferred_styles on commit drop as
+select distinct on (c.stale_id) c.stale_id, c.ballot_style_id as from_style, c.style_code, c.sample_ballot_url,
+  c.source_id, gen_random_uuid() as new_style
+from stale_candidates c
+where c.stale_id in (select stale_id from stale_candidates group by stale_id having count(distinct signature) = 1)
+order by c.stale_id, c.style_code;
+
+insert into ballot_styles (ballot_style_id, election_id, precinct_id, party, style_code, sample_ballot_url,
+  certification_date, source_id)
+select new_style, '{e}', stale_id, null, style_code || ' (inferred)', sample_ballot_url, '{cert}', source_id
+from inferred_styles;
+insert into ballot_style_contests (ballot_style_id, contest_id)
+select i.new_style, x.contest_id from inferred_styles i join ballot_style_contests x on x.ballot_style_id = i.from_style;
+insert into ballot_style_measures (ballot_style_id, measure_id)
+select i.new_style, x.measure_id from inferred_styles i join ballot_style_measures x on x.ballot_style_id = i.from_style;
+
+select p.precinct_code as inferred_precinct, i.style_code as same_ballot_as
+from inferred_styles i join precincts p on p.precinct_id = i.stale_id order by 1;
+"""
+
+
 def dq(value: str, tag: str = "q") -> str:
     return f"${tag}${value}${tag}$"
 
@@ -351,6 +410,8 @@ def main():
             f"  ('{sid}', '{mid}')" for sid, _, _, _, _, mids in styles for mid in mids
         ) + "\n) v(style_id, measure_id)\njoin ballot_styles bs on bs.ballot_style_id = v.style_id::uuid;\n\n"
     )
+
+    out.write(INFER_STALE_PRECINCTS_SQL.format(e=GENERAL_ELECTION_ID, cert=CERTIFICATION_DATE) + "\n")
 
     codes = sorted({s[3] for s in styles})
     out.write(

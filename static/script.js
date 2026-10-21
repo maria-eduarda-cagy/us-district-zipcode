@@ -481,7 +481,13 @@ function renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError) {
 
     const note = document.createElement('p');
     note.className = 'sample-ballot-note';
-    note.innerText = sampleBallot.ballot_status === 'loaded'
+    // "(inferred)": this precinct no longer exists in 2026; the ballot is the
+    // one every current precinct with the same districts shares (see
+    // load_md_general_2026.py).
+    const inferred = (sampleBallot.ballot_styles || []).some(s => (s.style_code || '').endsWith('(inferred)'));
+    note.innerText = inferred
+        ? 'Your precinct boundaries changed for 2026 and our map still shows an old precinct here. Contests below are from the certified ballot that every current precinct with your districts shares — confirm your precinct with the official voter lookup.'
+        : sampleBallot.ballot_status === 'loaded'
         ? 'Candidates and contests from a certified ballot style for this precinct.'
         : 'Generated from authoritative geocoding + district layers.';
     resultsDiv.appendChild(note);

@@ -12,7 +12,7 @@
 
 | Área | Cédula da geral de 2026 | Observações |
 |---|---|---|
-| Maryland (24 jurisdições) | **Carregada**: 1.991 estilos em 1.975 de 2.040 precintos | Os 65 sem cédula: 34 de preenchimento, sem eleitores (-09x/-999), e 31 polígonos defasados (abaixo). Primária e resultados só para o precinto 008-006 de Montgomery |
+| Maryland (24 jurisdições) | **Carregada**: 1.975 de 2.040 precintos pelas próprias cédulas + 13 inferidos (1.988) | Os 52 sem cédula: 34 precintos "fantasmas" do MSBE (sem eleitores) e 18 polígonos de precintos extintos onde a cédula não pode ser inferida (abaixo). Primária e resultados só para o precinto 008-006 de Montgomery |
 | Condado de Fairfax, VA | **Carregada**: todos os 266 precintos | Disputas da cidade de Herndon, precinto dividido Pioneer, explicações oficiais das questões |
 | Alexandria, VA | **Carregada**: todos os 32 precintos | Uma cédula para a cidade: Senado, Câmara do 8º distrito, 3 emendas |
 | Prince William, VA | **Carregada**: todos os 103 precintos | Câmara do 7º/10º (Colgan dividido), eleição especial do distrito 20 da Câmara de Delegados (5 precintos), 4 cidades (Dumfries, Haymarket, Occoquan, Quantico) |
@@ -27,7 +27,7 @@
 - **Checagem de consistência polígono × cédula (2026-10-21):** para cada precinto de MD com cédula, um ponto dentro do polígono cai nos distritos congressional, de senado, de delegados e de cidade da cédula. As exceções são Baltimore County 09-008 (59% no 42B e 41% no 42A pela camada de delegados de 2022; a cédula certificada diz 42B para o precinto inteiro) e um precinto dividido de Cumberland, como esperado.
 - **Polígonos defasados:** a camada estadual foi montada com arquivos dos condados de 2025, anteriores a algumas mudanças de precintos de 2026.
   - **Anne Arundel 04-025** (precinto novo, sem polígono em lugar nenhum; a camada do próprio condado também é anterior): os eleitores dele caem no polígono de um vizinho cuja cédula tem **outro distrito congressional e de senado**. Mitigado em 2026-10-21: o `sample-ballot` agora sinaliza essas cédulas (`district_mismatches`), e a interface indica a busca oficial do estado. A correção de verdade ainda depende do polígono do precinto.
-  - **Calvert 03-002** (sem polígono) e **31 precintos em 8 condados** que estão na camada mas em nenhuma cédula (provavelmente consolidados): endereços ali recebem só os distritos, sem cédula.
+  - **31 polígonos de precintos que não existem mais** (fora da lista oficial de precintos de 2026 do MSBE, que bate com as cédulas: 1.979 precintos + 34 fantasmas). **13 agora recebem cédula inferida** (2026-10-21): Calvert 03-007/03-008 (Dunkirk, Chesapeake Beach, a maior lacuna; o novo 03-002 de Calvert não tem polígono), Montgomery 05-024/06-018, St. Mary's 02-005/03-007 e 7 em Baltimore City. **18 continuam sem cédula** porque a inferência é ambígua ou impossível: Dorchester 01-002/01-003, Washington 03-005/24-002, St. Mary's 06-005, Baltimore City 11-008/11-009, Carroll 04-008/05-007, Frederick 07-006/20-002/20-003/21-005/21-006/23-003/23-004/26-003 (alguns são os 6 fantasmas de Frederick), Montgomery 04-043. A correção de verdade depende de camadas atualizadas dos condados (o servidor GIS de Calvert não respondeu; as camadas de Anne Arundel e Montgomery são tão antigas quanto a estadual).
   - **Worcester 01-003/01-004** (sem polígono): sem impacto, as quatro cédulas 01-00x são idênticas.
 - **Talbot:** 5 precintos divididos diferem só pelo distrito do Board of Education; sem camada de fronteiras, todos os estilos possíveis são mostrados.
 
@@ -42,6 +42,8 @@ Veja [public-api-plan.pt-BR.md](public-api-plan.pt-BR.md).
 ## Registro de decisões
 
 ### 2026-10-21
+- **A cédula de um polígono de precinto extinto só é inferida quando não há ambiguidade:** todos os precintos de 2026 do mesmo distrito eleitoral do condado cujos distritos localizáveis (congressional, senado, delegados, cidade) cobrem a maior parte do polígono têm exatamente a mesma cédula. O estilo é marcado "(inferred)", e a interface diz que a cédula vem dos precintos atuais com os mesmos distritos. Fora disso, o endereço continua "só distritos". 13 de 31 inferidos.
+- **Os precintos divididos de Talbot continuam como estilos empatados:** eles se dividem por distrito do Board of Education, e não existe camada pública com essas fronteiras.
 - **Os precintos 706 a 711 de Prince William recebem a cédula padrão do 7º distrito, embora a cédula de novembro deles não esteja na página do condado:** ficam 100% no 7º distrito, sem cidade nem eleição especial, então a cédula é totalmente determinada (igual à dos outros 54 precintos comuns do 7º). Registrado como inferência, não transcrição.
 - **As disputas de cidade são um estilo à parte nos precintos onde a cidade fica** (as cédulas "só para residentes" de Prince William, como em Herndon): a camada `place` escolhe, pelo endereço, o estilo com ou sem a cidade.
 - **Os precintos da Virginia vêm dos arquivos GIS por localidade do Departamento de Eleições** (uma fonte, mesmo formato para todas), exceto o condado de Fairfax, que mantém a camada validada do próprio condado. A camada antiga de Loudoun foi removida para que um endereço nunca caia em dois precintos; onde as camadas de localidades vizinhas se sobrepõem na fronteira, o `sample-ballot` usa o precinto do condado do endereço.
