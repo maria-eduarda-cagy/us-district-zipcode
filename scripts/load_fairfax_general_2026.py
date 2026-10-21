@@ -39,21 +39,19 @@ into `precincts`.
 Usage:
     python3 scripts/load_fairfax_general_2026.py > out.sql
 """
+import os
 import sys
 import uuid
 
-NS = uuid.uuid5(uuid.NAMESPACE_URL, "https://www.fairfaxcounty.gov/elections/sample-ballots#2026-general")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from va_general_2026 import (  # noqa: E402
+    AMENDMENT_EXPLANATIONS, AMENDMENTS, ELECTION_ID, FEDERAL_CONTESTS, NS, measure_id,
+)
+
 PDF_BASE = "https://www.fairfaxcounty.gov/elections/sites/elections/files/Assets/Documents/PDF/"
 PUBLISHED_DATE = "2026-09-02"  # Last-Modified of every sample ballot PDF
 COUNTY_FIPS = "51059"
 HERNDON_PLACE = "5136648"
-ELECTION_ID = str(uuid.uuid5(NS, "election"))
-
-DEM = "Democratic"
-REP = "Republican"
-LIB = "Libertarian"
-IND = "Independent"
-GREEN = "Green"
 
 # style_code -> (pdf, contest keys)
 STYLES = {
@@ -66,26 +64,7 @@ STYLES = {
 
 # key -> (office_name, office_level, contest_label, district_layer_id, district_id, scope, nonpartisan, vote_for, order, [(name, party), ...])
 CONTESTS = {
-    "senate": ("U.S. Senator", "Federal", "Member United States Senate", None, None, "at_large", False, 1, 1, [
-        ("Mark R. Warner", DEM),
-        ("Bert Mizusawa", REP),
-    ]),
-    "house8": ("U.S. Representative", "Federal", "Member House of Representatives 8th District", "cd119", "5108", "district", False, 1, 2, [
-        ("Donald S. Beyer, Jr.", DEM),
-        ("Tony A. Sabio", REP),
-        ("Shelly M. Arnoldi", LIB),
-        ("Tim S. Sharman", IND),
-    ]),
-    "house10": ("U.S. Representative", "Federal", "Member House of Representatives 10th District", "cd119", "5110", "district", False, 1, 2, [
-        ("Suhas Subramanyam", DEM),
-        ("Dave T. Beckwith", REP),
-        ("Ahsen Mujeeb Malik", IND),
-    ]),
-    "house11": ("U.S. Representative", "Federal", "Member House of Representatives 11th District", "cd119", "5111", "district", False, 1, 2, [
-        ("James R. Walkinshaw", DEM),
-        ("Arthur G. Purves", REP),
-        ("Dianne L. Blais", GREEN),
-    ]),
+    **FEDERAL_CONTESTS,
     "mayor": ("Mayor", "Local", "Mayor Town of Herndon", "place", HERNDON_PLACE, "district", True, 1, 3, [
         ("Keven J LeBlanc, Jr", None),
     ]),
@@ -109,24 +88,7 @@ CONTESTS = {
 # On every style. The ballot prints no FOR/AGAINST explanations, so
 # impact_yes/impact_no stay null; the official explanations published
 # separately go in `explanation` (see EXPLANATIONS).
-MEASURES = [
-    ("q1", 1, "state", None, None, "Question 1 - Proposed Constitutional Amendment",
-     "Should the Constitution of Virginia be amended to (i) protect the freedom to make personal decisions about "
-     "prenatal care, childbirth, postpartum care, birth control, abortion, miscarriage management, and fertility "
-     "care; (ii) protect doctors, nurses, and patients from being punished for these decisions; and (iii) allow for "
-     "restrictions on access to abortion during the third trimester of pregnancy except when the patient's health "
-     "is at risk or the pregnancy cannot survive?"),
-    ("q2", 2, "state", None, None, "Question 2 - Proposed Constitutional Amendment",
-     "Should the Constitution of Virginia be amended to (i) remove the ban on same-sex marriage; (ii) affirm that "
-     "two adults may marry regardless of sex, gender, or race; and (iii) require all legally valid marriages to be "
-     "treated equally under the law?"),
-    ("q3", 3, "state", None, None, "Question 3 - Proposed Constitutional Amendment",
-     "Should the Constitution of Virginia be amended (i) to provide for the fundamental right to vote in the "
-     "Commonwealth, (ii) to revise the qualifications of voters so that a person convicted of a felony is not "
-     "entitled to vote during his period of incarceration but is automatically invested with the right to vote "
-     "upon release from incarceration, and (iii) to update the existing prohibition on voting by persons found to "
-     "be mentally incompetent to instead apply to persons who have been found to lack the capacity to understand "
-     "the act of voting?"),
+MEASURES = AMENDMENTS + [
     ("parks", 4, "county", "county", COUNTY_FIPS, "Fairfax County Bond Issue - Parks and Park Facilities Bonds",
      "Shall Fairfax County, Virginia, contract a debt, borrow money, and issue bonds, in addition to the parks and "
      "park facilities bonds previously authorized, in the maximum aggregate principal amount of $180,000,000 for "
@@ -150,25 +112,7 @@ MEASURES = [
 # bond PDFs print some compound words without their hyphen ("11,800squarefoot",
 # "COVID19"); kept as printed. Paragraphs are separated by a blank line.
 EXPLANATIONS = {
-    "q1": (
-        "https://www.elections.virginia.gov/election-law/proposed-constitutional-amendment-question-1/",
-        "Present law: Currently, the Virginia Constitution does not explicitly provide to its citizens a right to reproductive freedom nor does it explicitly protect or prohibit certain kinds of health care procedures or decisions.\n\n"
-        "Proposed law: The proposed amendment would add to the Virginia Constitution's Bill of Rights the fundamental right to make and carry out decisions about a person’s own reproductive care with only certain, specific exceptions. The proposed amendment specifically allows the state government to pass laws to regulate abortion care in the third trimester of pregnancy, but requires any such law to allow for abortion care when it is medically needed to protect the life and health of the pregnant person or because the fetus is not viable.",
-    ),
-    "q2": (
-        "https://www.elections.virginia.gov/election-law/proposed-constitutional-amendment-question-2/",
-        "Present law: Marriages, civil unions, and other legal relationships with the same rights, benefits, and effects of marriage between persons of the same sex or gender are prohibited under Virginia’s Constitution. This prohibition is no longer enforceable as a result of the United States Supreme Court decision in Obergefell v. Hodges in 2015, but the prohibition on marriages between persons of the same sex or gender remains in the state’s Constitution. If the Supreme Court were to overturn its previous decision, that prohibition would be enforceable again.\n\n"
-        "Proposed law: The proposed amendment removes the prohibition on marriages between persons of the same sex or gender from the Virginia Constitution's Bill of Rights. It is replaced with the fundamental right to marry, requiring the state to recognize and treat equally under the law any lawful marriage between two adult persons, regardless of the sex, gender, or race of either person. The proposed amendment prohibits the state from denying a marriage license to two adult persons because of their sex, gender, or race.",
-    ),
-    "q3": (
-        "https://www.elections.virginia.gov/election-law/proposed-constitutional-amendment-question-3/",
-        "Present law: Virginia's Constitution currently provides that a person who is convicted of any felony loses the right to vote for the rest of their life unless the Governor of Virginia takes administrative action to restore that specific person’s right to vote. This is the only means of getting back the right to vote after a felony conviction.\n\n"
-        "The current constitutional provision also imposes a broad restriction, while using outdated terminology, on voting by persons found to be incapacitated. A person who is determined by a court to be incapacitated, regardless of the kind of incapacity, loses the right to vote, and only a court can restore the person’s right to vote later.\n\n"
-        "Proposed law: The proposed amendment enshrines in the Constitution the fundamental right of all qualified persons in the Commonwealth to vote. Two exceptions to this right are for persons who are serving a sentence of incarceration for a felony conviction and persons who are determined by a court to not understand the act of voting. Such right cannot otherwise be restricted by laws.\n\n"
-        "Under the proposed amendment, a person who is convicted of a felony loses the right to vote during their period of incarceration. Once released from incarceration, the person gets back the right to vote without needing to apply for restoration by the Governor.\n\n"
-        "The proposed amendment also requires a specific finding by a court that a person does not understand the act of voting in order for that person’s right to vote to be taken away.\n\n"
-        "With the right to vote, a person also has the right to be a juror, the right to be elected to an office, and the right to be a notary public.",
-    ),
+    **AMENDMENT_EXPLANATIONS,
     "parks": (
         "https://www.fairfaxcounty.gov/bond/sites/bond/files/Assets/Documents/2026%20Plain%20Language%20Statements/Parks%20PLS%20Web%20English.pdf",
         "This referendum asks voters whether Fairfax County should be authorized to contract a debt and issue bonds in the maximum principal amount of $180,000,000 for improvement of existing parks owned and operated by Fairfax County Park Authority, for additional parks and recreational facilities, and for preservation of open space across the county. The County’s current plans for the proceeds of bonds that may be authorized by this referendum are described below. These specific plans may be altered, but in any case, the bonds can only be issued for purposes described in the ballot question.\n\n"
@@ -325,7 +269,7 @@ def main():
         out.write(
             "insert into ballot_measures (measure_id, election_id, district_layer_id, district_id, jurisdiction_scope, "
             "title, question_text, explanation, explanation_source_url, order_on_ballot, source_id)\n"
-            f"values ('{uuid.uuid5(NS, key)}', '{ELECTION_ID}', {sql_text(layer_id)}, {sql_text(district_id)}, "
+            f"values ('{measure_id(key)}', '{ELECTION_ID}', {sql_text(layer_id)}, {sql_text(district_id)}, "
             f"'{scope}', {sql_text(title)}, {sql_text(question_text)}, {sql_text(explanation)}, "
             f"{sql_text(explanation_url)}, {order}, '{calendar_source}')\n"
             "on conflict (measure_id) do update set title = excluded.title, question_text = excluded.question_text,\n"

@@ -629,8 +629,13 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
       })
     : []
 
-  const precinctMembership = memberships.find((m) => m.layer_type === "PRECINCT" && m.district_id)
   const area = resolveCoverage(memberships, false)
+  // Neighboring localities' precinct layers can overlap slightly at their
+  // borders; precinct codes start with their county FIPS, so prefer the
+  // precinct of the address's own county.
+  const precincts = memberships.filter((m) => m.layer_type === "PRECINCT" && m.district_id)
+  const precinctMembership =
+    precincts.find((m) => area.county_fips && m.district_id!.startsWith(area.county_fips)) ?? precincts[0]
   const [precinctBallotStyles, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
     precinctMembership?.district_id
       ? fetchBallotStylesForPrecinct(baseUrl, serviceKey, fetchImpl, precinctMembership.district_id)

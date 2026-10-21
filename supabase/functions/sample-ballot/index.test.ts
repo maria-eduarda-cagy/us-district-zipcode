@@ -671,3 +671,21 @@ Deno.test("sample-ballot: flags ballot district contests that don't contain the 
   assertEquals(body.district_mismatches[0].ballot_district_id, "2403")
   assertEquals(body.district_mismatches[0].address_district_name, "Congressional District 5")
 })
+
+Deno.test("sample-ballot: on overlapping precinct layers, uses the precinct of the address's county", async () => {
+  const memberships = [
+    { layer_id: "va_precincts_elect", layer_type: "PRECINCT", district_id: "51153000501", district_name: "PW 501", source_url: null, geojson: "{}" },
+    { layer_id: "county", layer_type: "COUNTY", district_id: "51059", district_name: "Fairfax County", source_url: null, geojson: "{}" },
+    { layer_id: "va_fairfax_precincts", layer_type: "PRECINCT", district_id: "51059-845", district_name: "Fountainhead", source_url: null, geojson: "{}" },
+  ]
+  const requests: { url: string; body: string | null }[] = []
+  await handleRequest(
+    new Request("http://localhost/sample-ballot", { method: "POST", body: JSON.stringify({ address: "x" }) }),
+    {
+      fetch: makeFetch(memberships, [], [], [], requests),
+      envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
+    },
+  )
+  const precinctRequest = requests.find((r) => r.url.includes("/rest/v1/precincts"))
+  assertEquals(new URL(precinctRequest!.url).searchParams.get("precinct_code"), "eq.51059-845")
+})

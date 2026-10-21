@@ -14,7 +14,8 @@
 |---|---|---|
 | Maryland (24 jurisdições) | **Carregada**: 1.991 estilos em 1.975 de 2.040 precintos | Os 65 sem cédula: 34 de preenchimento, sem eleitores (-09x/-999), e 31 polígonos defasados (abaixo). Primária e resultados só para o precinto 008-006 de Montgomery |
 | Condado de Fairfax, VA | **Carregada**: todos os 266 precintos | Disputas da cidade de Herndon, precinto dividido Pioneer, explicações oficiais das questões |
-| Resto do norte da Virginia | Não carregada | Loudoun tem camadas de precintos e distritos, mas não cédulas; Arlington, Alexandria, Prince William, Falls Church, Fairfax City, Manassas e Manassas Park ainda não têm nada |
+| Alexandria, VA | **Carregada**: todos os 32 precintos | Uma cédula para a cidade: Senado, Câmara do 8º distrito, 3 emendas |
+| Resto do norte da Virginia | Precintos carregados (GIS do ELECT), cédulas ainda não | Prince William: cédulas acessíveis (uma por precinto). Arlington, Fairfax City, Manassas, Manassas Park, Loudoun: os sites bloqueiam acesso automatizado, e as cédulas precisam ser baixadas à mão. Falls Church: nenhum arquivo de cédula encontrado |
 | DC | Não carregada | Camadas de ward, ANC, SMD e SBOE carregadas; fonte da cédula de amostra não confirmada (o dcboe.org bloqueia acesso automatizado) |
 
 ## Próximos passos
@@ -30,7 +31,7 @@
 - **Talbot:** 5 precintos divididos diferem só pelo distrito do Board of Education; sem camada de fronteiras, todos os estilos possíveis são mostrados.
 
 ### 2. Terminar a DMV
-- Localidades da Virginia além de Fairfax (mesma abordagem: cédulas de amostra + distrito de cada precinto pelas descrições oficiais).
+- Localidades da Virginia além de Fairfax e Alexandria: os precintos de todas já estão carregados; as cédulas dependem das cédulas de amostra de cada uma. Prince William é a próxima (acessível; precisa do distrito congressional de cada precinto, das 4 cidades e da eleição especial do distrito 20 da Câmara de Delegados). Os 5 sites bloqueados precisam dos PDFs baixados no navegador.
 - Calendário da Virginia: só o dia da eleição está carregado (faltam prazos de registro e de votação antecipada).
 - DC: confirmar a fonte da cédula de amostra.
 
@@ -40,6 +41,9 @@ Veja [public-api-plan.pt-BR.md](public-api-plan.pt-BR.md).
 ## Registro de decisões
 
 ### 2026-10-21
+- **Os precintos da Virginia vêm dos arquivos GIS por localidade do Departamento de Eleições** (uma fonte, mesmo formato para todas), exceto o condado de Fairfax, que mantém a camada validada do próprio condado. A camada antiga de Loudoun foi removida para que um endereço nunca caia em dois precintos; onde as camadas de localidades vizinhas se sobrepõem na fronteira, o `sample-ballot` usa o precinto do condado do endereço.
+- **Disputas e emendas comuns a todas as cédulas da Virginia ficam num módulo só** (`va_general_2026.py`), e todas as localidades apontam para as mesmas linhas (refatoração verificada: o SQL gerado para Fairfax ficou idêntico byte a byte).
+- **As cédulas da Virginia são validadas contra as listas de candidatos do ELECT** (Fairfax: 25/25). As listas não substituem as cédulas de amostra: não têm a ordem dos candidatos nem as questões locais.
 - **Uma cédula cujas disputas distritais não contêm o endereço é mostrada com um aviso, e não escondida** (`district_mismatches`): provavelmente ela está certa para o precinto, e o eleitor é encaminhado à busca oficial do estado. Disputas de condado não são checadas (não têm fronteira própria). Ruído conhecido: onde a fronteira congressional do TIGER difere da oficial (faixas de alguns precintos de Fairfax), o aviso pode aparecer para uma cédula correta. Nenhum aviso indevido nos 12 endereços de teste.
 - **Precintos de Maryland sem VTD ganham um código derivado:** os distritos eleitorais não divididos de Garrett e Kent vêm da camada estadual só com o número do distrito; o código segue a numeração das cédulas de cada condado ("02-000" em Garrett, "02-001" em Kent), conferida contra as listas de precintos das cédulas. Polígonos sem nenhum código são pulados em vez de gravados com ID nulo.
 - **Precintos de preenchimento sem eleitores (-098/-099/-999) não têm cédula, e isso é o esperado** (a camada do próprio Anne Arundel mostra 0 eleitores registrados neles).

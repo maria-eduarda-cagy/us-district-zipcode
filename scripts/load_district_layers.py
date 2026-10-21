@@ -1,6 +1,7 @@
 """ETL: pulls supplemental election-boundary layers (MD precincts/delegate
 subdistricts/Montgomery County Council/Montgomery Board of Education, DC
-wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) from their official ArcGIS REST
+wards/ANC/SMD/SBOE, VA Fairfax/Loudoun; other Virginia
+precincts come from load_va_precincts.py) from their official ArcGIS REST
 services and generates SQL to load them into the
 district_layers/district_boundaries tables created by the
 20260702120000_district_layers_and_lookup migration.
@@ -132,12 +133,6 @@ def va_loudoun_election_district(props):
     return number, f"{name} District"
 
 
-def va_loudoun_precinct(props):
-    number = str(props.get("PR_NUMBER"))
-    name = str(props.get("PR_NAME", "")).title()
-    return number, name
-
-
 def md_montgomery_council_district(props):
     number = str(props.get("COUNCIL"))
     return number, f"Council District {number}"
@@ -236,15 +231,6 @@ LAYERS = [
         "jurisdiction": "Loudoun County, VA",
         "url": "https://logis.loudoun.gov/gis/rest/services/COL/ElectionDistricts/MapServer/8",
         "mapper": va_loudoun_election_district,
-    },
-    {
-        "layer_id": "va_loudoun_precincts",
-        "layer_type": "PRECINCT",
-        "name": "Loudoun County Precincts",
-        "state": "VA",
-        "jurisdiction": "Loudoun County, VA",
-        "url": "https://logis.loudoun.gov/gis/rest/services/COL/ElectionDistricts/MapServer/3",
-        "mapper": va_loudoun_precinct,
     },
     {
         "layer_id": "md_montgomery_council_districts",
