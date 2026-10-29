@@ -35,7 +35,7 @@ These tables have backed the `rpc_district_lookup` function since before this pr
 - `polling_locations` — voting locations, with `county_fips` (early voting in MD is county-restricted): Montgomery's 14 primary centers + all 102 MD general centers
 - `sources` — provenance: every row loaded by a script has `source_url`, `fetched_at`/`effective_date`, for auditing
 
-All new tables have RLS enabled **with no policies** — only the Edge Functions' `service_role key` can read/write. The anon key never accesses a table directly, only via `rpc_district_lookup` and the Edge Functions.
+All tables have RLS enabled **with no policies** (the legacy TIGER tables since 2026-10-29; only PostGIS's `spatial_ref_sys` can't be changed) — only the Edge Functions' `service_role key` can read/write. The anon key never accesses a table directly, only via `rpc_district_lookup` and the Edge Functions.
 
 ## Loader scripts (`scripts/`)
 
