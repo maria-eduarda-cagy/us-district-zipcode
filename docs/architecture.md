@@ -53,6 +53,7 @@ All new tables have RLS enabled **with no policies** — only the Edge Functions
 - `load_va_localities_general_2026.py` — 2026 general ballots for Northern Virginia localities other than Fairfax County, configured per locality (sample ballot, styles, precinct assignment). Loaded so far: Alexandria, Prince William.
 - `load_fairfax_general_2026.py` — the whole of Fairfax County, VA: creates the VA 2026 general election (+ election-day deadline), copies the `va_fairfax_precincts` layer into `precincts`, and links each precinct to one of 5 ballot styles (one per sample ballot PDF) using the precinct → congressional district list from the county's precinct descriptions. Split precincts (Pioneer, CD 11/8) and the 3 Herndon precincts (town ballot vs. "town exception" for voters outside town limits) get two styles each. The generated SQL asserts the style count.
 - `load_montgomery_primary_2026_results.py` — fetches the MSBE primary results CSVs live and loads `contest_results`. Validates every candidate name against the two primary ballot loaders and aborts on any mismatch; the generated SQL ends with a row-count assertion. Reusable — re-run to refresh.
+- `load_fairfax_primary_2026_results.py` — the 3 Virginia 2026-08-04 primaries Fairfax County voted in (GOP U.S. Senate, GOP CD 10, Dem CD 8): primary ballot styles per precinct plus official results fetched live from Virginia ELECT. Aborts if the CSV's candidates differ from the script's or if the computed winner differs from the official winners CSV. Reusable — re-run to refresh.
 
 ## Edge Functions
 
