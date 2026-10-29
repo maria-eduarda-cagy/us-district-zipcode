@@ -84,6 +84,7 @@ The integration is the second stage. **Before joining them, both systems must us
 ## Decision log
 
 ### 2026-10-29
+- **The legacy TIGER tables are locked down** (`cd119`, `sldu`, `sldl`, `county`, `place`, `unsd` and their `_raw` copies): they predated the migrations with RLS off and full anon grants, so the public anon key could delete them through the REST API (flagged by the Supabase security advisor). Migration `20261029120000_lock_legacy_tiger_tables.sql` enables RLS with no policies and revokes anon/authenticated grants, like every other table; the Edge Functions use the service role and were checked live afterwards. `spatial_ref_sys` (PostGIS, owned by `supabase_admin`) and the "extension in public" warning for `postgis` stay as they are: neither can be changed safely from the project.
 - **The default path is without precincts: ballot by map point** (address → districts → candidates). With public data, feasibility is 100% at the federal and state levels, versus 72% for precincts at the local level. See [feasibility-study.md](feasibility-study.md) and the summary [feasibility-summary.md](feasibility-summary.md).
 - **Maryland's precincts stay:** they are an extra layer (exact ballot where available) and the ground truth for measuring the map-point method's error near boundaries.
 - **Maryland is the test state:** automatic per-loader updates (file check → run only the affected loader → scheduling) are built and validated in MD before any other state. The other states replicate the same logic through configuration.
