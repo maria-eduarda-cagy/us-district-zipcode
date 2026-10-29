@@ -4,7 +4,7 @@ English version. Versão em português: [README.pt-BR.md](README.pt-BR.md).
 
 Type an address in DC, Maryland or Virginia and get its districts, its **real certified ballot** for the November 3, 2026 general election (contests, candidates, ballot questions with official explanations), nearby early voting centers and the election calendar. Ballots come from official sources (state and county sample ballots), are validated against official candidate lists, and are never fabricated: where we don't have a ballot, the app says so.
 
-Current direction, coverage and every decision: [docs/roadmap.md](docs/roadmap.md) ([pt-BR](docs/roadmap.pt-BR.md)).
+Every data source with its exact URL: [docs/references.md](docs/references.md). Current direction, coverage and every decision: [docs/roadmap.md](docs/roadmap.md) ([pt-BR](docs/roadmap.pt-BR.md)).
 
 ## Features
 - **Geocoding**: Census geocoder, ArcGIS fallback.
@@ -19,7 +19,7 @@ Current direction, coverage and every decision: [docs/roadmap.md](docs/roadmap.m
 
 | Area | Ballots |
 |---|---|
-| Maryland (24 jurisdictions) | 1,988 of 2,040 precincts. The rest: 34 zero-voter "ghost" precincts and 18 polygons of precincts that no longer exist (the state's map predates 2026 changes) |
+| Maryland (24 jurisdictions) | 1,988 of 2,040 precincts. In voters: 99.45% get their own precinct's ballot, 0.43% see every possible ballot (Talbot splits), 0.12% are in precincts missing from the state's map (inferred or flagged ballot). The rest of the polygons: 34 zero-voter "ghost" precincts and 18 of precincts that no longer exist (~333 residents) |
 | Fairfax County, VA | All 266 precincts |
 | Alexandria, VA | All 32 precincts |
 | Prince William County, VA | All 103 precincts |

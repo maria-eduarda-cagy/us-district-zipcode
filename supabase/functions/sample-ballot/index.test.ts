@@ -34,6 +34,7 @@ function makeFetch(
   pollingRows: any[] = [],
   deadlineRows: any[] = [],
   requests: { url: string; body: string | null }[] = [],
+  coverageRows: any[] = [],
 ): typeof fetch {
   return async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
@@ -51,6 +52,9 @@ function makeFetch(
     }
     if (url.includes("/rest/v1/precincts")) {
       return new Response(JSON.stringify(precinctRows), { status: 200 })
+    }
+    if (url.includes("/rest/v1/ballot_coverage")) {
+      return new Response(JSON.stringify(coverageRows), { status: 200 })
     }
     throw new Error(`Unexpected fetch: ${url}`)
   }
@@ -445,17 +449,40 @@ Deno.test("sample-ballot: surfaces nearby polling locations and election events"
   const memberships = [
     { layer_id: "county", layer_type: "COUNTY", district_id: "24031", district_name: "Montgomery County", source_url: null, geojson: "{}" },
   ]
+  const coverageRows = [
+    {
+      election_id: "55555555-5555-5555-5555-555555555555", state: "MD", registered_voters: 4287334,
+      voters_own_ballot: 4263840, voters_tied_ballots: 18417, voters_no_polygon: 5077, voters_no_ballot: 0,
+      precincts: 1978, precincts_own_ballot: 1969,
+      registration_source_url: "https://elections.maryland.gov/elections/2026/GP26_State_Precinct_Reference.xlsx",
+      registration_as_of: "2026-05-12",
+    },
+  ]
   const requests: { url: string; body: string | null }[] = []
 
   const resp = await handleRequest(
     new Request("http://localhost/sample-ballot", { method: "POST", body: JSON.stringify({ address: "x" }) }),
     {
-      fetch: makeFetch(memberships, [], pollingRows, deadlineRows, requests),
+      fetch: makeFetch(memberships, [], pollingRows, deadlineRows, requests, coverageRows),
       envGet: makeEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role" }),
     },
   )
 
   const body = await resp.json()
+  // Statewide ballot coverage, in registered voters, for the address's state.
+  const coverageUrl = new URL(requests.find((r) => r.url.includes("/rest/v1/ballot_coverage"))!.url)
+  assertEquals(coverageUrl.searchParams.get("state"), "eq.MD")
+  assertEquals(JSON.stringify(body.coverage.state_stats), JSON.stringify({
+    registered_voters: 4287334,
+    voters_own_ballot: 4263840,
+    voters_tied_ballots: 18417,
+    voters_no_polygon: 5077,
+    voters_no_ballot: 0,
+    precincts: 1978,
+    precincts_own_ballot: 1969,
+    source_url: "https://elections.maryland.gov/elections/2026/GP26_State_Precinct_Reference.xlsx",
+    as_of: "2026-05-12",
+  }))
   // Locations restricted to the address's county, calendar to its state.
   const pollingRequest = requests.find((r) => r.url.endsWith("/rpc/rpc_nearby_polling_locations"))
   assertEquals(JSON.parse(pollingRequest!.body!).county_fips, "24031")
@@ -495,6 +522,7 @@ Deno.test("sample-ballot: address outside DC/MD/VA gets no polling locations or 
   assertEquals(body.polling_locations.length, 0)
   assertEquals(body.election_events.length, 0)
   assertEquals(requests.some((r) => r.url.includes("rpc_nearby_polling_locations") || r.url.includes("/deadlines")), false)
+  assertEquals(body.coverage.state_stats, null)
 })
 
 Deno.test("sample-ballot: falls back to ArcGIS when Census fails", async () => {

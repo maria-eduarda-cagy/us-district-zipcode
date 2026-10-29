@@ -4,7 +4,7 @@ Versão em português. English version: [README.md](README.md).
 
 Digite um endereço em DC, Maryland ou Virginia e veja seus distritos, sua **cédula certificada real** da eleição geral de 3 de novembro de 2026 (disputas, candidatos, questões com explicações oficiais), os locais de votação antecipada próximos e o calendário eleitoral. As cédulas vêm de fontes oficiais (cédulas de amostra do estado e dos condados), são validadas contra as listas oficiais de candidatos e nunca são inventadas: onde não temos a cédula, o app diz isso.
 
-Rumo atual, cobertura e todas as decisões: [docs/roadmap.pt-BR.md](docs/roadmap.pt-BR.md) ([EN](docs/roadmap.md)).
+Todas as fontes de dados com a URL exata: [docs/references.pt-BR.md](docs/references.pt-BR.md). Rumo atual, cobertura e todas as decisões: [docs/roadmap.pt-BR.md](docs/roadmap.pt-BR.md) ([EN](docs/roadmap.md)).
 
 ## Funcionalidades
 - **Geocodificação**: geocodificador do Censo, com ArcGIS de reserva.
@@ -19,7 +19,7 @@ Rumo atual, cobertura e todas as decisões: [docs/roadmap.pt-BR.md](docs/roadmap
 
 | Área | Cédulas |
 |---|---|
-| Maryland (24 jurisdições) | 1.988 de 2.040 precintos. O resto: 34 precintos "fantasmas" sem eleitores e 18 polígonos de precintos que não existem mais (o mapa do estado é anterior às mudanças de 2026) |
+| Maryland (24 jurisdições) | 1.988 de 2.040 precintos. Em eleitores: 99,45% recebem a cédula do próprio precinto, 0,43% veem todas as cédulas possíveis (precintos divididos de Talbot), 0,12% estão em precintos que faltam no mapa do estado (cédula inferida ou com aviso). O resto dos polígonos: 34 precintos "fantasmas" sem eleitores e 18 de precintos que não existem mais (~333 moradores) |
 | Condado de Fairfax, VA | Todos os 266 precintos |
 | Alexandria, VA | Todos os 32 precintos |
 | Condado de Prince William, VA | Todos os 103 precintos |

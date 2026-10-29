@@ -7,3 +7,4 @@ pandas
 pyogrio
 fiona
 python-dotenv
+openpyxl

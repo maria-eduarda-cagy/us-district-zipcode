@@ -733,6 +733,12 @@ main {
     color: #34495e;
 }
 
+.state-coverage-note {
+    margin: 0.5rem 0 0 0;
+    line-height: 1.4;
+    color: #5a6b7b;
+}
+
 .data-freshness summary {
     cursor: pointer;
 }

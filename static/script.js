@@ -411,6 +411,7 @@ function updateUI(data, sampleBallot, sampleBallotError) {
     resultsDiv.innerHTML = '';
 
     renderDataFreshness(resultsDiv, sampleBallot);
+    renderStateCoverage(resultsDiv, sampleBallot?.coverage);
     renderOfficesSection(resultsDiv, sampleBallot, sampleBallotError);
     renderDistrictsSection(resultsDiv, memberships);
     renderElectionEvents(resultsDiv, sampleBallot);
@@ -768,11 +769,48 @@ function renderMeasureCard(measure) {
     return card;
 }
 
+const STATE_NAMES = { MD: 'Maryland', VA: 'Virginia', DC: 'Washington, DC' };
+
+// Statewide ballot coverage in registered voters (ballot_coverage view), so
+// the gaps are visible as numbers, not only when an address falls in one.
+function renderStateCoverage(resultsDiv, coverage) {
+    const s = coverage?.state_stats;
+    if (!s || !s.registered_voters) return;
+    // Two decimals everywhere, so the rows add up to 100%.
+    const pct = n => `${(100 * n / s.registered_voters).toFixed(2)}%`;
+    const fmt = n => n.toLocaleString('en-US');
+    const rows = [
+        [s.voters_own_ballot, `their own precinct's map and certified ballot (${fmt(s.precincts_own_ballot)} of ${fmt(s.precincts)} precincts)`],
+        [s.voters_tied_ballots, 'split precincts our maps can\'t tell apart by address: every possible ballot is shown'],
+        [s.voters_no_polygon, 'precincts missing from the state\'s precinct map: the ballot shown is inferred or a neighbor\'s, with a warning'],
+        [s.voters_no_ballot, 'precincts with no ballot loaded yet'],
+    ].filter(([n]) => n > 0);
+
+    const box = document.createElement('details');
+    box.className = 'data-freshness state-coverage';
+    box.innerHTML = `
+        <summary>${STATE_NAMES[coverage.state] || coverage.state} ballot coverage:
+            <strong>${pct(s.voters_own_ballot)}</strong> of registered voters get their precinct's own ballot</summary>
+        <ul class="data-source-list">${rows.map(([n, label]) => `
+            <li><strong>${pct(n)}</strong> (${fmt(n)} voters): ${label}</li>`).join('')}
+        </ul>
+        <p class="state-coverage-note">
+            Out of ${fmt(s.registered_voters)} registered voters, counted per precinct by the
+            ${s.source_url ? `<a href="${s.source_url}" target="_blank" rel="noopener" class="sample-source-link">official precinct list</a>` : 'official precinct list'}${s.as_of ? ` (${formatDateOnly(s.as_of)})` : ''}.
+            This measures coverage, not accuracy: where the state's precinct map is older than this
+            election, an address near a boundary can still land in the wrong precinct.
+            ${coverage.state === 'MD' ? 'Areas where the map still shows a precinct that no longer exists (about 330 residents, 2020 Census) get districts only.' : ''}
+        </p>
+    `;
+    resultsDiv.appendChild(box);
+}
+
 const SOURCE_TYPE_LABELS = {
     certified_ballot_pdf: 'Certified ballot (PDF)',
     election_results_csv: 'Official results (CSV)',
     election_calendar: 'Election calendar',
     early_voting_centers_pdf: 'Early voting centers (PDF)',
+    precinct_reference_xlsx: 'Official precinct list (XLSX)',
 };
 
 function renderDataFreshness(resultsDiv, sampleBallot) {

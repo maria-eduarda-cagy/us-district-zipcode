@@ -177,6 +177,21 @@ type Coverage = {
   state: string | null
   county_fips: string | null
   county_name: string | null
+  // Statewide ballot coverage in registered voters (ballot_coverage view);
+  // null where the state's precinct registration isn't loaded.
+  state_stats?: StateCoverageStats | null
+}
+
+type StateCoverageStats = {
+  registered_voters: number
+  voters_own_ballot: number
+  voters_tied_ballots: number
+  voters_no_polygon: number
+  voters_no_ballot: number
+  precincts: number
+  precincts_own_ballot: number
+  source_url: string | null
+  as_of: string | null
 }
 
 function resolveCoverage(memberships: Membership[], hasBallot: boolean): Coverage {
@@ -185,6 +200,36 @@ function resolveCoverage(memberships: Membership[], hasBallot: boolean): Coverag
   const state = countyFips ? STATE_BY_FIPS[countyFips.slice(0, 2)] ?? null : null
   const level = !state ? "outside_coverage" : hasBallot ? "ballot" : "districts_only"
   return { level, state, county_fips: state ? countyFips : null, county_name: state ? county?.district_name ?? null : null }
+}
+
+async function fetchStateCoverage(
+  baseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch,
+  state: string,
+): Promise<StateCoverageStats | null> {
+  const url = new URL(`${baseUrl}/rest/v1/ballot_coverage`)
+  url.searchParams.set("state", `eq.${state}`)
+  url.searchParams.set("select", "*")
+  const resp = await fetchImpl(url.toString(), {
+    method: "GET",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  })
+  if (!resp.ok) return null
+  const rows = await resp.json()
+  const r = Array.isArray(rows) ? rows[0] : null
+  if (!r) return null
+  return {
+    registered_voters: r.registered_voters,
+    voters_own_ballot: r.voters_own_ballot,
+    voters_tied_ballots: r.voters_tied_ballots,
+    voters_no_polygon: r.voters_no_polygon,
+    voters_no_ballot: r.voters_no_ballot,
+    precincts: r.precincts,
+    precincts_own_ballot: r.precincts_own_ballot,
+    source_url: r.registration_source_url ?? null,
+    as_of: r.registration_as_of ?? null,
+  }
 }
 
 async function fetchNearbyPollingLocations(
@@ -636,7 +681,7 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
   const precincts = memberships.filter((m) => m.layer_type === "PRECINCT" && m.district_id)
   const precinctMembership =
     precincts.find((m) => area.county_fips && m.district_id!.startsWith(area.county_fips)) ?? precincts[0]
-  const [precinctBallotStyles, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
+  const [precinctBallotStyles, pollingLocationsRaw, electionEventsRaw, stateStats] = await Promise.all([
     precinctMembership?.district_id
       ? fetchBallotStylesForPrecinct(baseUrl, serviceKey, fetchImpl, precinctMembership.district_id)
       : Promise.resolve([]),
@@ -644,9 +689,10 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
       ? fetchNearbyPollingLocations(baseUrl, serviceKey, fetchImpl, geocoded.lon, geocoded.lat, area.county_fips)
       : Promise.resolve([]),
     area.state ? fetchElectionEvents(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve([]),
+    area.state ? fetchStateCoverage(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve(null),
   ])
   const ballotStylesRaw = selectBallotStyles(precinctBallotStyles, memberships)
-  const coverage = resolveCoverage(memberships, ballotStylesRaw.length > 0)
+  const coverage = { ...resolveCoverage(memberships, ballotStylesRaw.length > 0), state_stats: stateStats }
 
   const contests = shapeContests(ballotStylesRaw, memberships, includeDownballot)
   const measures = shapeMeasures(ballotStylesRaw)
