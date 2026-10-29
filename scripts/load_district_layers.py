@@ -1,6 +1,8 @@
 """ETL: pulls supplemental election-boundary layers (MD precincts/delegate
-subdistricts, DC wards/ANC/SMD/SBOE, VA Fairfax/Loudoun) from their official
-ArcGIS REST services and generates SQL to load them into the
+subdistricts/Montgomery County Council/Montgomery Board of Education, DC
+wards/ANC/SMD/SBOE, VA Fairfax/Loudoun; other Virginia
+precincts come from load_va_precincts.py) from their official ArcGIS REST
+services and generates SQL to load them into the
 district_layers/district_boundaries tables created by the
 20260702120000_district_layers_and_lookup migration.
 
@@ -36,11 +38,15 @@ def fetch_features(base_url: str) -> list:
             "resultRecordCount": str(PAGE_SIZE),
         }
         url = f"{base_url}/query?{urllib.parse.urlencode(params)}"
+        # Some county ArcGIS servers (e.g. gis.montgomerycountymd.gov) return
+        # 403 for the default "Python-urllib/x.y" user agent -- a generic
+        # browser-like one gets through fine.
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         last_error = None
         data = None
         for attempt in range(4):
             try:
-                with urllib.request.urlopen(url, timeout=60) as resp:
+                with urllib.request.urlopen(request, timeout=60) as resp:
                     data = json.load(resp)
                 break
             except (urllib.error.URLError, TimeoutError) as e:
@@ -75,8 +81,19 @@ def md_delegate_subdistrict(props):
     return district, f"House of Delegates Subdistrict {district}"
 
 
+# Election districts that aren't split into precincts are published with no
+# VTD, just the district number as LABEL (13 in Garrett, 4 in Kent). Their
+# ballots number them "<district>-000" in Garrett and "<district>-001" in Kent.
+MD_UNSPLIT_DISTRICT_SUFFIX = {"24023": "000", "24029": "001"}
+
+
 def md_precinct(props):
-    return props.get("VTD"), props.get("NAME")
+    vtd = props.get("VTD")
+    county, label = props.get("COUNTY"), str(props.get("LABEL") or "")
+    if not vtd and county in MD_UNSPLIT_DISTRICT_SUFFIX and label.isdigit():
+        code = f"{int(label):02d}-{MD_UNSPLIT_DISTRICT_SUFFIX[county]}"
+        return f"{county}{code}", f"{props.get('COUNTYNAME')} Precinct {code}"
+    return vtd, props.get("NAME")
 
 
 def dc_ward(props):
@@ -103,16 +120,27 @@ def va_fairfax_supervisor(props):
     return props.get("IDENTIFIER"), f"{district} District"
 
 
+def va_fairfax_precinct(props):
+    # County-prefixed (like MD's VTD codes): bare precinct numbers collide
+    # with Loudoun's, and precincts.precinct_code is looked up on its own.
+    number = str(props.get("PREC_IDENT"))
+    return f"51059-{number}", str(props.get("PREC_NAME", "")).title()
+
+
 def va_loudoun_election_district(props):
     number = str(props.get("EL_NUMBER"))
     name = str(props.get("EL_NAME", "")).title()
     return number, f"{name} District"
 
 
-def va_loudoun_precinct(props):
-    number = str(props.get("PR_NUMBER"))
-    name = str(props.get("PR_NAME", "")).title()
-    return number, name
+def md_montgomery_council_district(props):
+    number = str(props.get("COUNCIL"))
+    return number, f"Council District {number}"
+
+
+def md_montgomery_board_of_education_district(props):
+    number = str(props.get("BDED"))
+    return number, f"Board of Education District {number}"
 
 
 # Year suffixes below match each source agency's own layer name (verified
@@ -187,6 +215,15 @@ LAYERS = [
         "mapper": va_fairfax_supervisor,
     },
     {
+        "layer_id": "va_fairfax_precincts",
+        "layer_type": "PRECINCT",
+        "name": "Fairfax County Voting Precincts",
+        "state": "VA",
+        "jurisdiction": "Fairfax County, VA",
+        "url": "https://www.fairfaxcounty.gov/idrisi/rest/services/Jade/Electoral/MapServer/1",
+        "mapper": va_fairfax_precinct,
+    },
+    {
         "layer_id": "va_loudoun_election_districts_2022",
         "layer_type": "SUPERVISOR_DISTRICT",
         "name": "Loudoun County Election Districts (2022)",
@@ -196,15 +233,38 @@ LAYERS = [
         "mapper": va_loudoun_election_district,
     },
     {
-        "layer_id": "va_loudoun_precincts",
-        "layer_type": "PRECINCT",
-        "name": "Loudoun County Precincts",
-        "state": "VA",
-        "jurisdiction": "Loudoun County, VA",
-        "url": "https://logis.loudoun.gov/gis/rest/services/COL/ElectionDistricts/MapServer/3",
-        "mapper": va_loudoun_precinct,
+        "layer_id": "md_montgomery_council_districts",
+        "layer_type": "COUNCIL_DISTRICT",
+        "name": "Montgomery County Council Districts",
+        "state": "MD",
+        "jurisdiction": "Montgomery County, MD",
+        "url": "https://gis.montgomerycountymd.gov/arcgis/rest/services/elections/council_7_districts_maponly/MapServer/0",
+        "mapper": md_montgomery_council_district,
+    },
+    {
+        "layer_id": "md_montgomery_board_of_education_districts",
+        "layer_type": "BOE_DISTRICT",
+        "name": "Montgomery County Board of Education Districts",
+        "state": "MD",
+        "jurisdiction": "Montgomery County, MD",
+        "url": "https://gis4.montgomerycountymd.gov/arcgis/rest/services/elections/board_of_ed/FeatureServer/0",
+        "mapper": md_montgomery_board_of_education_district,
     },
 ]
+
+
+# MD `precincts` rows (what ballot styles hang off) mirror the
+# md_precincts_2026 layer's VTDs. Removing a precinct cascades to its ballot
+# styles, so re-run load_md_general_2026.py after a precinct renumbering.
+MD_PRECINCTS_SYNC = (
+    "insert into precincts (precinct_code, precinct_name, county_fips, state, geom)\n"
+    "select district_id, district_name, left(district_id, 5), 'MD', geom from district_boundaries\n"
+    "where layer_id = 'md_precincts_2026' and district_id is not null\n"
+    "on conflict (state, county_fips, precinct_code, effective_from) do update\n"
+    "  set geom = excluded.geom, precinct_name = excluded.precinct_name;\n\n"
+    "delete from precincts p where p.state = 'MD' and not exists (\n"
+    "  select 1 from district_boundaries b where b.layer_id = 'md_precincts_2026' and b.district_id = p.precinct_code);\n\n"
+)
 
 
 def main():
@@ -240,6 +300,9 @@ def main():
             if not geom:
                 continue
             district_id, district_name = layer["mapper"](props)
+            if not district_id:
+                print(f"  WARNING: skipping a feature with no district id: {district_name}", file=sys.stderr)
+                continue
             geojson_text = json.dumps(geom)
             out.write(
                 "insert into district_boundaries (layer_id, district_id, district_name, geom, source_url)\n"
@@ -251,6 +314,18 @@ def main():
             )
             rows += 1
         print(f"  wrote {rows} insert statements", file=sys.stderr)
+
+        # Drop districts the source no longer publishes (e.g. Howard went from
+        # 118 to 67 precincts in July 2026); left behind they would overlap
+        # the redrawn ones.
+        live_ids = [mapped for mapped in (layer["mapper"](f.get("properties", {}))[0] for f in features if f.get("geometry")) if mapped]
+        if live_ids:
+            out.write(
+                f"delete from district_boundaries where layer_id = {sql_text(layer['layer_id'])}\n"
+                f"  and (district_id is null or district_id <> all (array[{', '.join(sql_text(i) for i in live_ids)}]));\n\n"
+            )
+        if layer["layer_id"] == "md_precincts_2026":
+            out.write(MD_PRECINCTS_SYNC)
 
     print("Done.", file=sys.stderr)
 

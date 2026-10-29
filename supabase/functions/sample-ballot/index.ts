@@ -91,10 +91,31 @@ type Candidate = {
   unopposed: boolean
   incumbent: boolean
   ballot_order: number | null
+  results: CandidateResult[]
+}
+
+// Official totals for an election that already happened (empty otherwise).
+// pct is within the same party primary of the same contest.
+type CandidateResult = {
+  primary_party: string | null
+  reporting_unit: string
+  votes: number
+  pct: number | null
+  is_winner: boolean
+}
+
+type ElectionRef = { election_id: string; name: string; election_type: string; election_date: string; status: string }
+
+type DataSource = {
+  source_type: string
+  source_url: string
+  effective_date: string | null
+  fetched_at: string
 }
 
 type Contest = {
   contest_id: string
+  election: ElectionRef | null
   office_name: string
   contest_label: string
   jurisdiction_level: JurisdictionLevel
@@ -107,33 +128,109 @@ type Contest = {
   nonpartisan: boolean
   retention: boolean
   source_url: string | null
+  verification_note: string | null
   candidates: Candidate[]
 }
 
 type Measure = {
   measure_id: string
+  election: ElectionRef | null
   title: string
   question_text: string | null
   impact_yes: string | null
   impact_no: string | null
+  explanation: string | null
+  explanation_source_url: string | null
+  order_on_ballot: number | null
 }
 
 type BallotStyleSummary = {
   ballot_style_id: string
   style_code: string
   party: string | null
-  election: { election_id: string; name: string; election_type: string; election_date: string; status: string } | null
+  election: ElectionRef | null
 }
+
+const SOURCE_FIELDS = "source_type,source_url,effective_date,fetched_at"
 
 const BALLOT_SELECT =
   "precinct_id,ballot_styles(ballot_style_id,style_code,party,certification_date,sample_ballot_url," +
   "election:elections(election_id,name,election_type,election_date,status)," +
-  "ballot_style_contests(contests(contest_id,contest_label,vote_for,nonpartisan,retention,district_id,scope," +
+  `source:sources(${SOURCE_FIELDS}),` +
+  "ballot_style_contests(contests(contest_id,contest_label,vote_for,nonpartisan,retention,district_id,scope,verification_note," +
   "office:offices(name,level)," +
   "district_layer:district_layers(layer_type,source_url)," +
   "source:sources(source_url)," +
-  "candidates(name,party,unopposed,incumbent,ballot_order)))," +
-  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no)))"
+  "candidates(name,party,unopposed,incumbent,ballot_order," +
+  `results:contest_results(primary_party,reporting_unit,votes,is_winner,source:sources(${SOURCE_FIELDS}))))),` +
+  "ballot_style_measures(ballot_measures(measure_id,title,question_text,impact_yes,impact_no,explanation,explanation_source_url,order_on_ballot)))"
+
+// The DMV jurisdictions this tool covers, by state FIPS (first 2 digits of
+// the COUNTY membership's GEOID).
+const STATE_BY_FIPS: Record<string, string> = { "11": "DC", "24": "MD", "51": "VA" }
+
+type Coverage = {
+  // ballot: certified ballot loaded for this precinct; districts_only: inside
+  // the DMV, but only district boundaries are available; outside_coverage:
+  // not in DC/MD/VA (or no district matched at all).
+  level: "ballot" | "districts_only" | "outside_coverage"
+  state: string | null
+  county_fips: string | null
+  county_name: string | null
+  // Statewide ballot coverage in registered voters (ballot_coverage view);
+  // null where the state's precinct registration isn't loaded.
+  state_stats?: StateCoverageStats | null
+}
+
+type StateCoverageStats = {
+  registered_voters: number
+  voters_own_ballot: number
+  voters_tied_ballots: number
+  voters_no_polygon: number
+  voters_no_ballot: number
+  precincts: number
+  precincts_own_ballot: number
+  source_url: string | null
+  as_of: string | null
+}
+
+function resolveCoverage(memberships: Membership[], hasBallot: boolean): Coverage {
+  const county = memberships.find((m) => m.layer_type === "COUNTY" && m.district_id)
+  const countyFips = county?.district_id ?? null
+  const state = countyFips ? STATE_BY_FIPS[countyFips.slice(0, 2)] ?? null : null
+  const level = !state ? "outside_coverage" : hasBallot ? "ballot" : "districts_only"
+  return { level, state, county_fips: state ? countyFips : null, county_name: state ? county?.district_name ?? null : null }
+}
+
+async function fetchStateCoverage(
+  baseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch,
+  state: string,
+): Promise<StateCoverageStats | null> {
+  const url = new URL(`${baseUrl}/rest/v1/ballot_coverage`)
+  url.searchParams.set("state", `eq.${state}`)
+  url.searchParams.set("select", "*")
+  const resp = await fetchImpl(url.toString(), {
+    method: "GET",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  })
+  if (!resp.ok) return null
+  const rows = await resp.json()
+  const r = Array.isArray(rows) ? rows[0] : null
+  if (!r) return null
+  return {
+    registered_voters: r.registered_voters,
+    voters_own_ballot: r.voters_own_ballot,
+    voters_tied_ballots: r.voters_tied_ballots,
+    voters_no_polygon: r.voters_no_polygon,
+    voters_no_ballot: r.voters_no_ballot,
+    precincts: r.precincts,
+    precincts_own_ballot: r.precincts_own_ballot,
+    source_url: r.registration_source_url ?? null,
+    as_of: r.registration_as_of ?? null,
+  }
+}
 
 async function fetchNearbyPollingLocations(
   baseUrl: string,
@@ -141,6 +238,7 @@ async function fetchNearbyPollingLocations(
   fetchImpl: typeof fetch,
   lon: number,
   lat: number,
+  countyFips: string,
 ): Promise<any[]> {
   const resp = await fetchImpl(`${baseUrl}/rest/v1/rpc/rpc_nearby_polling_locations`, {
     method: "POST",
@@ -149,19 +247,27 @@ async function fetchNearbyPollingLocations(
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
     },
-    body: JSON.stringify({ lon, lat, max_results: 5 }),
+    // Early voting is county-restricted in MD; DC vote centers are city-wide (one county).
+    body: JSON.stringify({ lon, lat, max_results: 5, county_fips: countyFips }),
   })
   if (!resp.ok) return []
   const rows = await resp.json()
   return Array.isArray(rows) ? rows : []
 }
 
-async function fetchElectionEvents(baseUrl: string, serviceKey: string, fetchImpl: typeof fetch): Promise<any[]> {
+async function fetchElectionEvents(
+  baseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch,
+  state: string,
+): Promise<any[]> {
   const url = new URL(`${baseUrl}/rest/v1/deadlines`)
   url.searchParams.set(
     "select",
-    "deadline_type,deadline_at,notes,election:elections(election_id,name,election_type,election_date,status)",
+    "deadline_type,deadline_at,notes,election:elections!inner(election_id,name,election_type,election_date,status,state)," +
+      `source:sources(${SOURCE_FIELDS})`,
   )
+  url.searchParams.set("election.state", `eq.${state}`)
   url.searchParams.set("order", "deadline_at.asc")
 
   const resp = await fetchImpl(url.toString(), {
@@ -223,6 +329,178 @@ async function fetchBallotStylesForPrecinct(
   return rows.flatMap((r: any) => (Array.isArray(r?.ballot_styles) ? r.ballot_styles : []))
 }
 
+// A split precinct carries several styles for the same election and party
+// (e.g. Fairfax's Pioneer precinct is split between CD 8 and CD 11; Herndon
+// precincts have a town ballot and a "town exception" ballot for voters
+// outside town limits). Keep, per election+party, the style whose district
+// contests all contain the address, preferring the one matching the most
+// districts. If none fully matches (boundary data disagreeing at the edges),
+// fall back to the best partial match rather than showing no ballot. When
+// styles tie because the district that separates them has no boundary layer
+// (e.g. Talbot's Board of Education districts), keep all of them: the voter
+// sees every contest they might have instead of an arbitrary guess.
+function selectBallotStyles(ballotStyles: any[], memberships: Membership[]): any[] {
+  const memberKeys = new Set(
+    memberships.filter((m) => m.layer_type && m.district_id).map((m) => `${m.layer_type}:${m.district_id}`),
+  )
+  const groups = new Map<string, any[]>()
+  for (const style of ballotStyles) {
+    const key = `${style?.election?.election_id ?? ""}|${style?.party ?? ""}`
+    groups.set(key, [...(groups.get(key) ?? []), style])
+  }
+
+  const selected: any[] = []
+  for (const styles of groups.values()) {
+    if (styles.length === 1) {
+      selected.push(styles[0])
+      continue
+    }
+    let best: any[] = []
+    let bestScore = -Infinity
+    for (const style of styles) {
+      let matched = 0
+      let missed = 0
+      for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+        const c = link?.contests
+        const layerType = c?.district_layer?.layer_type
+        // County-scoped contests (a county's council districts with no
+        // boundary layer of their own) can't tell styles in one precinct apart.
+        if (c?.scope !== "district" || !layerType || layerType === "COUNTY" || !c?.district_id) continue
+        if (memberKeys.has(`${layerType}:${c.district_id}`)) matched++
+        else missed++
+      }
+      // Any miss ranks below every full match.
+      const score = missed > 0 ? matched - 1000 * missed : matched
+      if (score > bestScore) {
+        best = [style]
+        bestScore = score
+      } else if (score === bestScore) {
+        best.push(style)
+      }
+    }
+    selected.push(...best)
+  }
+  return selected
+}
+
+type DistrictMismatch = {
+  contest_label: string
+  election: ElectionRef | null
+  layer_type: string
+  ballot_district_id: string
+  address_district_id: string | null
+  address_district_name: string | null
+}
+
+// District contests on the selected ballot whose district doesn't contain the
+// address. A precinct polygon older than the ballot (e.g. a precinct created
+// after the boundary layer was published) puts the address in a neighbor's
+// precinct, whose ballot can be for another congressional or legislative
+// district. County-scoped contests carry no boundary of their own and are
+// skipped, as in selectBallotStyles.
+function findDistrictMismatches(ballotStyles: any[], memberships: Membership[]): DistrictMismatch[] {
+  const memberKeys = new Set(
+    memberships.filter((m) => m.layer_type && m.district_id).map((m) => `${m.layer_type}:${m.district_id}`),
+  )
+  const found = new Map<string, DistrictMismatch>()
+  for (const style of ballotStyles) {
+    for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+      const c = link?.contests
+      const layerType = c?.district_layer?.layer_type
+      if (c?.scope !== "district" || !layerType || layerType === "COUNTY" || !c?.district_id) continue
+      if (memberKeys.has(`${layerType}:${c.district_id}`)) continue
+      const addressDistrict = memberships.find((m) => m.layer_type === layerType && m.district_id)
+      found.set(c.contest_id, {
+        contest_label: c?.contest_label ?? "",
+        election: shapeElectionRef(style?.election),
+        layer_type: layerType,
+        ballot_district_id: c.district_id,
+        address_district_id: addressDistrict?.district_id ?? null,
+        address_district_name: addressDistrict?.district_name ?? null,
+      })
+    }
+  }
+  return Array.from(found.values())
+}
+
+function shapeElectionRef(e: any): ElectionRef | null {
+  if (!e) return null
+  return {
+    election_id: e.election_id,
+    name: e.name,
+    election_type: e.election_type,
+    election_date: e.election_date,
+    status: e.status,
+  }
+}
+
+function shapeCandidates(rawCandidates: any[]): Candidate[] {
+  const partyTotals = new Map<string, number>()
+  for (const cand of rawCandidates) {
+    for (const r of Array.isArray(cand?.results) ? cand.results : []) {
+      const key = r?.primary_party ?? ""
+      partyTotals.set(key, (partyTotals.get(key) ?? 0) + (typeof r?.votes === "number" ? r.votes : 0))
+    }
+  }
+
+  return rawCandidates
+    .slice()
+    .sort((a: any, b: any) => (a?.ballot_order ?? 0) - (b?.ballot_order ?? 0))
+    .map((cand: any) => ({
+      name: cand?.name ?? "",
+      party: cand?.party ?? null,
+      unopposed: !!cand?.unopposed,
+      incumbent: !!cand?.incumbent,
+      ballot_order: cand?.ballot_order ?? null,
+      results: (Array.isArray(cand?.results) ? cand.results : []).map((r: any) => {
+        const votes = typeof r?.votes === "number" ? r.votes : 0
+        const total = partyTotals.get(r?.primary_party ?? "") ?? 0
+        return {
+          primary_party: r?.primary_party ?? null,
+          reporting_unit: r?.reporting_unit ?? "",
+          votes,
+          pct: total > 0 ? Math.round((votes / total) * 1000) / 10 : null,
+          is_winner: !!r?.is_winner,
+        }
+      }),
+    }))
+}
+
+// Every source row behind this response (ballots, results, calendar, polling
+// locations), newest fetch first, so the UI can say how fresh the data is.
+function collectDataSources(ballotStyles: any[], deadlineRows: any[], pollingRows: any[]): DataSource[] {
+  const found = new Map<string, DataSource>()
+  const add = (s: any) => {
+    if (!s?.source_url || !s?.fetched_at) return
+    found.set(`${s.source_type}|${s.source_url}`, {
+      source_type: s.source_type ?? "",
+      source_url: s.source_url,
+      effective_date: s.effective_date ?? null,
+      fetched_at: s.fetched_at,
+    })
+  }
+
+  for (const style of ballotStyles) {
+    add(style?.source)
+    for (const link of Array.isArray(style?.ballot_style_contests) ? style.ballot_style_contests : []) {
+      for (const cand of Array.isArray(link?.contests?.candidates) ? link.contests.candidates : []) {
+        for (const r of Array.isArray(cand?.results) ? cand.results : []) add(r?.source)
+      }
+    }
+  }
+  for (const d of deadlineRows) add(d?.source)
+  for (const p of pollingRows) {
+    add({
+      source_type: p?.source_type,
+      source_url: p?.source_url,
+      effective_date: p?.source_effective_date,
+      fetched_at: p?.source_fetched_at,
+    })
+  }
+
+  return Array.from(found.values()).sort((a, b) => Date.parse(b.fetched_at) - Date.parse(a.fetched_at))
+}
+
 function shapeContests(ballotStyles: any[], memberships: Membership[], includeDownballot: boolean): Contest[] {
   const membershipByKey = new Map<string, Membership>()
   for (const m of memberships) {
@@ -243,21 +521,11 @@ function shapeContests(ballotStyles: any[], memberships: Membership[], includeDo
       const districtId = c?.district_id ?? null
       const membership = layerType && districtId ? membershipByKey.get(`${layerType}:${districtId}`) : undefined
 
-      const candidates: Candidate[] = Array.isArray(c?.candidates)
-        ? c.candidates
-            .slice()
-            .sort((a: any, b: any) => (a?.ballot_order ?? 0) - (b?.ballot_order ?? 0))
-            .map((cand: any) => ({
-              name: cand?.name ?? "",
-              party: cand?.party ?? null,
-              unopposed: !!cand?.unopposed,
-              incumbent: !!cand?.incumbent,
-              ballot_order: cand?.ballot_order ?? null,
-            }))
-        : []
+      const candidates = shapeCandidates(Array.isArray(c?.candidates) ? c.candidates : [])
 
       dedup.set(c.contest_id, {
         contest_id: c.contest_id,
+        election: shapeElectionRef(style?.election),
         office_name: c?.office?.name ?? c?.contest_label ?? "Unknown Office",
         contest_label: c?.contest_label ?? c?.office?.name ?? "Unknown Contest",
         jurisdiction_level: level,
@@ -270,6 +538,7 @@ function shapeContests(ballotStyles: any[], memberships: Membership[], includeDo
         nonpartisan: !!c?.nonpartisan,
         retention: !!c?.retention,
         source_url: c?.source?.source_url ?? c?.district_layer?.source_url ?? null,
+        verification_note: c?.verification_note ?? null,
         candidates,
       })
     }
@@ -293,14 +562,18 @@ function shapeMeasures(ballotStyles: any[]): Measure[] {
       if (!m?.measure_id) continue
       dedup.set(m.measure_id, {
         measure_id: m.measure_id,
+        election: shapeElectionRef(style?.election),
         title: m?.title ?? "",
         question_text: m?.question_text ?? null,
         impact_yes: m?.impact_yes ?? null,
         impact_no: m?.impact_no ?? null,
+        explanation: m?.explanation ?? null,
+        explanation_source_url: m?.explanation_source_url ?? null,
+        order_on_ballot: m?.order_on_ballot ?? null,
       })
     }
   }
-  return Array.from(dedup.values())
+  return Array.from(dedup.values()).sort((a, b) => (a.order_on_ballot ?? 0) - (b.order_on_ballot ?? 0))
 }
 
 function shapeBallotStyleSummaries(ballotStyles: any[]): BallotStyleSummary[] {
@@ -308,15 +581,7 @@ function shapeBallotStyleSummaries(ballotStyles: any[]): BallotStyleSummary[] {
     ballot_style_id: s?.ballot_style_id ?? null,
     style_code: s?.style_code ?? null,
     party: s?.party ?? null,
-    election: s?.election
-      ? {
-          election_id: s.election.election_id,
-          name: s.election.name,
-          election_type: s.election.election_type,
-          election_date: s.election.election_date,
-          status: s.election.status,
-        }
-      : null,
+    election: shapeElectionRef(s?.election),
   }))
 }
 
@@ -409,20 +674,33 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
       })
     : []
 
-  const precinctMembership = memberships.find((m) => m.layer_type === "PRECINCT" && m.district_id)
-  const [ballotStylesRaw, pollingLocationsRaw, electionEventsRaw] = await Promise.all([
+  const area = resolveCoverage(memberships, false)
+  // Neighboring localities' precinct layers can overlap slightly at their
+  // borders; precinct codes start with their county FIPS, so prefer the
+  // precinct of the address's own county.
+  const precincts = memberships.filter((m) => m.layer_type === "PRECINCT" && m.district_id)
+  const precinctMembership =
+    precincts.find((m) => area.county_fips && m.district_id!.startsWith(area.county_fips)) ?? precincts[0]
+  const [precinctBallotStyles, pollingLocationsRaw, electionEventsRaw, stateStats] = await Promise.all([
     precinctMembership?.district_id
       ? fetchBallotStylesForPrecinct(baseUrl, serviceKey, fetchImpl, precinctMembership.district_id)
       : Promise.resolve([]),
-    fetchNearbyPollingLocations(baseUrl, serviceKey, fetchImpl, geocoded.lon, geocoded.lat),
-    fetchElectionEvents(baseUrl, serviceKey, fetchImpl),
+    area.county_fips
+      ? fetchNearbyPollingLocations(baseUrl, serviceKey, fetchImpl, geocoded.lon, geocoded.lat, area.county_fips)
+      : Promise.resolve([]),
+    area.state ? fetchElectionEvents(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve([]),
+    area.state ? fetchStateCoverage(baseUrl, serviceKey, fetchImpl, area.state) : Promise.resolve(null),
   ])
+  const ballotStylesRaw = selectBallotStyles(precinctBallotStyles, memberships)
+  const coverage = { ...resolveCoverage(memberships, ballotStylesRaw.length > 0), state_stats: stateStats }
 
   const contests = shapeContests(ballotStylesRaw, memberships, includeDownballot)
   const measures = shapeMeasures(ballotStylesRaw)
   const ballot_styles = shapeBallotStyleSummaries(ballotStylesRaw)
   const polling_locations = shapePollingLocations(pollingLocationsRaw)
   const election_events = shapeElectionEvents(electionEventsRaw)
+  const data_sources = collectDataSources(ballotStylesRaw, electionEventsRaw, pollingLocationsRaw)
+  const district_mismatches = findDistrictMismatches(ballotStylesRaw, memberships)
 
   return jsonResponse({
     lat: geocoded.lat,
@@ -439,11 +717,15 @@ export async function handleRequest(req: Request, deps: EdgeDeps = {}) {
     include_downballot: includeDownballot,
     memberships,
     ballot_status: ballotStylesRaw.length > 0 ? "loaded" : "not_available",
+    coverage,
     ballot_styles,
+    district_mismatches,
     contests,
     measures,
     polling_locations,
     election_events,
+    data_sources,
+    data_last_updated: data_sources.length > 0 ? data_sources[0].fetched_at : null,
     ...(debug ? { debug: { rpc_url: rpcUrl, supabase_url: baseUrl, precinct_code: precinctMembership?.district_id ?? null } } : {}),
   })
 }
